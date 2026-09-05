@@ -1,0 +1,692 @@
+import os
+import json
+from collections import Counter
+
+# Complete 50-record ground truth semantic mapping dataset (Audited & Corrected)
+DATASET = [
+    # 1. SSH_VERSION (8 examples)
+    {
+        "vendor": "cisco",
+        "platform": "ios",
+        "raw_config": "ip ssh version 2",
+        "security_control": "SSH_VERSION",
+        "security_category": "session_security",
+        "value": 2,
+        "security_meaning": "SSH protocol version 2 is explicitly enforced for administrative sessions",
+        "evidence": "ip ssh version 2",
+        "source_type": "vendor_documentation",
+        "split": "train"
+    },
+    {
+        "vendor": "cisco",
+        "platform": "ios",
+        "raw_config": "ip ssh version 1",
+        "security_control": "SSH_VERSION",
+        "security_category": "session_security",
+        "value": 1,
+        "security_meaning": "Insecure legacy SSH protocol version 1 is permitted",
+        "evidence": "ip ssh version 1",
+        "source_type": "vendor_documentation",
+        "split": "train"
+    },
+    {
+        "vendor": "juniper",
+        "platform": "junos",
+        "raw_config": "set system services ssh protocol-version v2",
+        "security_control": "SSH_VERSION",
+        "security_category": "session_security",
+        "value": 2,
+        "security_meaning": "Junos SSH service is restricted to protocol version 2",
+        "evidence": "set system services ssh protocol-version v2",
+        "source_type": "vendor_documentation",
+        "split": "train"
+    },
+    {
+        "vendor": "cisco",
+        "platform": "ios-xr",
+        "raw_config": "ssh server v2",
+        "security_control": "SSH_VERSION",
+        "security_category": "session_security",
+        "value": 2,
+        "security_meaning": "Cisco IOS-XR SSH server is configured to require protocol version 2",
+        "evidence": "ssh server v2",
+        "source_type": "vendor_documentation",
+        "split": "train"
+    },
+    {
+        "vendor": "huawei",
+        "platform": "vrp",
+        "raw_config": "undo ssh server compatible-ssh1x enable",
+        "security_control": "SSH_VERSION",
+        "security_category": "session_security",
+        "value": 2,
+        "security_meaning": "Compatibility with SSHv1 is disabled, leaving SSHv2 as the supported SSH version",
+        "evidence": "undo ssh server compatible-ssh1x enable",
+        "source_type": "vendor_documentation",
+        "split": "train"
+    },
+    {
+        "vendor": "cisco",
+        "platform": "asa",
+        "raw_config": "ssh version 2",
+        "security_control": "SSH_VERSION",
+        "security_category": "session_security",
+        "value": 2,
+        "security_meaning": "Cisco ASA SSH daemon is configured to require protocol version 2",
+        "evidence": "ssh version 2",
+        "source_type": "vendor_documentation",
+        "split": "train"
+    },
+    {
+        "vendor": "cisco",
+        "platform": "ios-xr",
+        "raw_config": "ssh server v1",
+        "security_control": "SSH_VERSION",
+        "security_category": "session_security",
+        "value": 1,
+        "security_meaning": "Cisco IOS-XR SSH server is configured to permit legacy protocol version 1",
+        "evidence": "ssh server v1",
+        "source_type": "vendor_documentation",
+        "split": "validation"
+    },
+    {
+        "vendor": "juniper",
+        "platform": "junos",
+        "raw_config": "set system services ssh protocol-version v1",
+        "security_control": "SSH_VERSION",
+        "security_category": "session_security",
+        "value": 1,
+        "security_meaning": "Junos SSH service is configured to allow legacy version 1",
+        "evidence": "set system services ssh protocol-version v1",
+        "source_type": "synthetic",
+        "split": "validation"
+    },
+
+    # 2. TELNET_ENABLED (10 examples)
+    {
+        "vendor": "cisco",
+        "platform": "ios",
+        "raw_config": "transport input telnet",
+        "security_control": "TELNET_ENABLED",
+        "security_category": "session_security",
+        "value": True,
+        "security_meaning": "Insecure unencrypted Telnet protocol is enabled for terminal access",
+        "evidence": "transport input telnet",
+        "source_type": "vendor_documentation",
+        "split": "train"
+    },
+    {
+        "vendor": "cisco",
+        "platform": "ios",
+        "raw_config": "no transport input telnet",
+        "security_control": "TELNET_ENABLED",
+        "security_category": "session_security",
+        "value": False,
+        "security_meaning": "Telnet protocol is explicitly prohibited on terminal line",
+        "evidence": "no transport input telnet",
+        "source_type": "vendor_documentation",
+        "split": "train"
+    },
+    {
+        "vendor": "cisco",
+        "platform": "ios",
+        "raw_config": "transport input none",
+        "security_control": "TELNET_ENABLED",
+        "security_category": "session_security",
+        "value": False,
+        "security_meaning": "All remote terminal protocols including Telnet are completely disabled",
+        "evidence": "transport input none",
+        "source_type": "vendor_documentation",
+        "split": "train"
+    },
+    {
+        "vendor": "cisco",
+        "platform": "ios",
+        "raw_config": "transport input ssh",
+        "security_control": "TELNET_ENABLED",
+        "security_category": "session_security",
+        "value": False,
+        "security_meaning": "VTY line transport is restricted strictly to SSH, implicitly disabling insecure Telnet access",
+        "evidence": "transport input ssh",
+        "source_type": "public_configuration",
+        "split": "train"
+    },
+    {
+        "vendor": "juniper",
+        "platform": "junos",
+        "raw_config": "set system services telnet",
+        "security_control": "TELNET_ENABLED",
+        "security_category": "session_security",
+        "value": True,
+        "security_meaning": "Junos Telnet service is active and listening for incoming sessions",
+        "evidence": "set system services telnet",
+        "source_type": "vendor_documentation",
+        "split": "train"
+    },
+    {
+        "vendor": "juniper",
+        "platform": "junos",
+        "raw_config": "delete system services telnet",
+        "security_control": "TELNET_ENABLED",
+        "security_category": "session_security",
+        "value": False,
+        "security_meaning": "Junos Telnet service configuration is removed, disabling Telnet",
+        "evidence": "delete system services telnet",
+        "source_type": "vendor_documentation",
+        "split": "train"
+    },
+    {
+        "vendor": "fortinet",
+        "platform": "fortios",
+        "raw_config": "set allowaccess ping https ssh telnet",
+        "security_control": "TELNET_ENABLED",
+        "security_category": "session_security",
+        "value": True,
+        "security_meaning": "Interface management access profile includes Telnet, permitting unencrypted administrative access",
+        "evidence": "set allowaccess ping https ssh telnet",
+        "source_type": "vendor_documentation",
+        "split": "train"
+    },
+    {
+        "vendor": "huawei",
+        "platform": "vrp",
+        "raw_config": "telnet server enable",
+        "security_control": "TELNET_ENABLED",
+        "security_category": "session_security",
+        "value": True,
+        "security_meaning": "Huawei VRP Telnet server daemon is globally enabled",
+        "evidence": "telnet server enable",
+        "source_type": "vendor_documentation",
+        "split": "train"
+    },
+    {
+        "vendor": "arista",
+        "platform": "eos",
+        "raw_config": "management telnet no shutdown",
+        "security_control": "TELNET_ENABLED",
+        "security_category": "session_security",
+        "value": True,
+        "security_meaning": "Arista EOS management Telnet server is administratively active",
+        "evidence": "management telnet no shutdown",
+        "source_type": "vendor_documentation",
+        "split": "validation"
+    },
+    {
+        "vendor": "fortinet",
+        "platform": "fortios",
+        "raw_config": "set allowaccess ping https ssh",
+        "security_control": "TELNET_ENABLED",
+        "security_category": "session_security",
+        "value": False,
+        "security_meaning": "Interface management access profile permits only ping, HTTPS, and SSH, leaving Telnet disabled",
+        "evidence": "set allowaccess ping https ssh",
+        "source_type": "vendor_documentation",
+        "split": "validation"
+    },
+
+    # 3. HTTP_MANAGEMENT (10 examples)
+    {
+        "vendor": "cisco",
+        "platform": "ios",
+        "raw_config": "ip http server",
+        "security_control": "HTTP_MANAGEMENT",
+        "security_category": "management_plane",
+        "value": True,
+        "security_meaning": "Unencrypted HTTP web management server daemon is actively enabled",
+        "evidence": "ip http server",
+        "source_type": "vendor_documentation",
+        "split": "train"
+    },
+    {
+        "vendor": "cisco",
+        "platform": "ios",
+        "raw_config": "no ip http server",
+        "security_control": "HTTP_MANAGEMENT",
+        "security_category": "management_plane",
+        "value": False,
+        "security_meaning": "Unencrypted HTTP web management server daemon is disabled",
+        "evidence": "no ip http server",
+        "source_type": "vendor_documentation",
+        "split": "train"
+    },
+    {
+        "vendor": "cisco",
+        "platform": "nxos",
+        "raw_config": "no feature http-server",
+        "security_control": "HTTP_MANAGEMENT",
+        "security_category": "management_plane",
+        "value": False,
+        "security_meaning": "Cisco NX-OS HTTP web server feature is administratively disabled",
+        "evidence": "no feature http-server",
+        "source_type": "vendor_documentation",
+        "split": "train"
+    },
+    {
+        "vendor": "juniper",
+        "platform": "junos",
+        "raw_config": "set system services web-management http",
+        "security_control": "HTTP_MANAGEMENT",
+        "security_category": "management_plane",
+        "value": True,
+        "security_meaning": "Plaintext HTTP J-Web management service is enabled",
+        "evidence": "set system services web-management http",
+        "source_type": "vendor_documentation",
+        "split": "train"
+    },
+    {
+        "vendor": "juniper",
+        "platform": "junos",
+        "raw_config": "set system services web-management http disable",
+        "security_control": "HTTP_MANAGEMENT",
+        "security_category": "management_plane",
+        "value": False,
+        "security_meaning": "Plaintext HTTP J-Web management service is explicitly disabled",
+        "evidence": "set system services web-management http disable",
+        "source_type": "vendor_documentation",
+        "split": "train"
+    },
+    {
+        "vendor": "arista",
+        "platform": "eos",
+        "raw_config": "management api http-commands no shutdown",
+        "security_control": "HTTP_MANAGEMENT",
+        "security_category": "management_plane",
+        "value": True,
+        "security_meaning": "Arista eAPI HTTP command server is enabled and operational",
+        "evidence": "management api http-commands no shutdown",
+        "source_type": "vendor_documentation",
+        "split": "train"
+    },
+    {
+        "vendor": "fortinet",
+        "platform": "fortios",
+        "raw_config": "set allowaccess http",
+        "security_control": "HTTP_MANAGEMENT",
+        "security_category": "management_plane",
+        "value": True,
+        "security_meaning": "Unencrypted plaintext HTTP web management access is enabled on the interface",
+        "evidence": "set allowaccess http",
+        "source_type": "vendor_documentation",
+        "split": "train"
+    },
+    {
+        "vendor": "huawei",
+        "platform": "vrp",
+        "raw_config": "undo http server enable",
+        "security_control": "HTTP_MANAGEMENT",
+        "security_category": "management_plane",
+        "value": False,
+        "security_meaning": "Huawei VRP HTTP web management server is turned off",
+        "evidence": "undo http server enable",
+        "source_type": "vendor_documentation",
+        "split": "train"
+    },
+    {
+        "vendor": "cisco",
+        "platform": "nxos",
+        "raw_config": "feature http-server",
+        "security_control": "HTTP_MANAGEMENT",
+        "security_category": "management_plane",
+        "value": True,
+        "security_meaning": "Cisco NX-OS HTTP web server feature is enabled",
+        "evidence": "feature http-server",
+        "source_type": "vendor_documentation",
+        "split": "validation"
+    },
+    {
+        "vendor": "arista",
+        "platform": "eos",
+        "raw_config": "management api http-commands shutdown",
+        "security_control": "HTTP_MANAGEMENT",
+        "security_category": "management_plane",
+        "value": False,
+        "security_meaning": "Arista eAPI HTTP command server is administratively shut down",
+        "evidence": "management api http-commands shutdown",
+        "source_type": "vendor_documentation",
+        "split": "validation"
+    },
+
+    # 4. SESSION_TIMEOUT (8 examples)
+    {
+        "vendor": "cisco",
+        "platform": "ios",
+        "raw_config": "exec-timeout 10 0",
+        "security_control": "SESSION_TIMEOUT",
+        "security_category": "session_security",
+        "value": 10,
+        "security_meaning": "Terminal session idle timeout is configured to 10 minutes",
+        "evidence": "exec-timeout 10 0",
+        "source_type": "vendor_documentation",
+        "split": "train"
+    },
+    {
+        "vendor": "cisco",
+        "platform": "ios",
+        "raw_config": "exec-timeout 5 0",
+        "security_control": "SESSION_TIMEOUT",
+        "security_category": "session_security",
+        "value": 5,
+        "security_meaning": "Terminal session idle timeout is configured to 5 minutes",
+        "evidence": "exec-timeout 5 0",
+        "source_type": "vendor_documentation",
+        "split": "train"
+    },
+    {
+        "vendor": "cisco",
+        "platform": "ios",
+        "raw_config": "exec-timeout 0 0",
+        "security_control": "SESSION_TIMEOUT",
+        "security_category": "session_security",
+        "value": 0,
+        "security_meaning": "Terminal session timeout is set to 0, disabling automatic disconnect",
+        "evidence": "exec-timeout 0 0",
+        "source_type": "public_configuration",
+        "split": "train"
+    },
+    {
+        "vendor": "juniper",
+        "platform": "junos",
+        "raw_config": "set system login idle-timeout 10",
+        "security_control": "SESSION_TIMEOUT",
+        "security_category": "session_security",
+        "value": 10,
+        "security_meaning": "Junos user login session idle timeout is configured to 10 minutes",
+        "evidence": "set system login idle-timeout 10",
+        "source_type": "vendor_documentation",
+        "split": "train"
+    },
+    {
+        "vendor": "arista",
+        "platform": "eos",
+        "raw_config": "idle-timeout 15",
+        "security_control": "SESSION_TIMEOUT",
+        "security_category": "session_security",
+        "value": 15,
+        "security_meaning": "CLI session inactivity timeout is set to 15 minutes",
+        "evidence": "idle-timeout 15",
+        "source_type": "vendor_documentation",
+        "split": "train"
+    },
+    {
+        "vendor": "huawei",
+        "platform": "vrp",
+        "raw_config": "idle-timeout 10 0",
+        "security_control": "SESSION_TIMEOUT",
+        "security_category": "session_security",
+        "value": 10,
+        "security_meaning": "User interface idle timeout is configured to 10 minutes",
+        "evidence": "idle-timeout 10 0",
+        "source_type": "vendor_documentation",
+        "split": "train"
+    },
+    {
+        "vendor": "juniper",
+        "platform": "junos",
+        "raw_config": "set system login idle-timeout 15",
+        "security_control": "SESSION_TIMEOUT",
+        "security_category": "session_security",
+        "value": 15,
+        "security_meaning": "Junos login session idle timeout is set to 15 minutes",
+        "evidence": "set system login idle-timeout 15",
+        "source_type": "vendor_documentation",
+        "split": "validation"
+    },
+    {
+        "vendor": "fortinet",
+        "platform": "fortios",
+        "raw_config": "set admintimeout 10",
+        "security_control": "SESSION_TIMEOUT",
+        "security_category": "session_security",
+        "value": 10,
+        "security_meaning": "FortiOS administrator GUI/CLI idle timeout is configured to 10 minutes",
+        "evidence": "set admintimeout 10",
+        "source_type": "vendor_documentation",
+        "split": "validation"
+    },
+
+    # 5. AAA_ENABLED (8 examples)
+    {
+        "vendor": "cisco",
+        "platform": "ios",
+        "raw_config": "aaa new-model",
+        "security_control": "AAA_ENABLED",
+        "security_category": "access_control",
+        "value": True,
+        "security_meaning": "Authentication, Authorization, and Accounting (AAA) subsystem is enabled",
+        "evidence": "aaa new-model",
+        "source_type": "vendor_documentation",
+        "split": "train"
+    },
+    {
+        "vendor": "cisco",
+        "platform": "ios",
+        "raw_config": "no aaa new-model",
+        "security_control": "AAA_ENABLED",
+        "security_category": "access_control",
+        "value": False,
+        "security_meaning": "AAA framework is disabled, reverting to legacy local authentication",
+        "evidence": "no aaa new-model",
+        "source_type": "vendor_documentation",
+        "split": "train"
+    },
+    {
+        "vendor": "juniper",
+        "platform": "junos",
+        "raw_config": "set system authentication-order [ tacplus radius password ]",
+        "security_control": "AAA_ENABLED",
+        "security_category": "access_control",
+        "value": True,
+        "security_meaning": "Centralized AAA authentication order via TACACS+ and RADIUS is enabled",
+        "evidence": "set system authentication-order [ tacplus radius password ]",
+        "source_type": "vendor_documentation",
+        "split": "train"
+    },
+    {
+        "vendor": "juniper",
+        "platform": "junos",
+        "raw_config": "set system authentication-order password",
+        "security_control": "AAA_ENABLED",
+        "security_category": "access_control",
+        "value": False,
+        "security_meaning": "Centralized AAA servers are omitted, relying strictly on local password",
+        "evidence": "set system authentication-order password",
+        "source_type": "public_configuration",
+        "split": "train"
+    },
+    {
+        "vendor": "arista",
+        "platform": "eos",
+        "raw_config": "aaa authentication login default group radius local",
+        "security_control": "AAA_ENABLED",
+        "security_category": "access_control",
+        "value": True,
+        "security_meaning": "AAA RADIUS authentication is configured for user logins",
+        "evidence": "aaa authentication login default group radius local",
+        "source_type": "vendor_documentation",
+        "split": "train"
+    },
+    {
+        "vendor": "huawei",
+        "platform": "vrp",
+        "raw_config": "aaa",
+        "security_control": "AAA_ENABLED",
+        "security_category": "access_control",
+        "value": True,
+        "security_meaning": "Huawei VRP AAA view is entered and AAA services are active",
+        "evidence": "aaa",
+        "source_type": "vendor_documentation",
+        "split": "train"
+    },
+    {
+        "vendor": "fortinet",
+        "platform": "fortios",
+        "raw_config": "set remote-auth enable",
+        "security_control": "AAA_ENABLED",
+        "security_category": "access_control",
+        "value": True,
+        "security_meaning": "Remote centralized AAA authentication is explicitly enabled for administrator login",
+        "evidence": "set remote-auth enable",
+        "source_type": "vendor_documentation",
+        "split": "validation"
+    },
+    {
+        "vendor": "cisco",
+        "platform": "nxos",
+        "raw_config": "no feature tacacs+",
+        "security_control": "AAA_ENABLED",
+        "security_category": "access_control",
+        "value": False,
+        "security_meaning": "TACACS+ centralized authentication feature is disabled",
+        "evidence": "no feature tacacs+",
+        "source_type": "public_configuration",
+        "split": "validation"
+    },
+
+    # 6. UNKNOWN / Non-Security (6 examples)
+    {
+        "vendor": "cisco",
+        "platform": "ios",
+        "raw_config": "interface GigabitEthernet0/1 description UPLINK_TO_DISTRIBUTION",
+        "security_control": "UNKNOWN",
+        "security_category": "none",
+        "value": None,
+        "security_meaning": "Interface description label; configuration does not impact network security controls",
+        "evidence": "interface GigabitEthernet0/1 description UPLINK_TO_DISTRIBUTION",
+        "source_type": "public_configuration",
+        "split": "train"
+    },
+    {
+        "vendor": "cisco",
+        "platform": "ios",
+        "raw_config": "router ospf 1",
+        "security_control": "UNKNOWN",
+        "security_category": "none",
+        "value": None,
+        "security_meaning": "Dynamic routing protocol process configuration; unrelated to administrative security controls",
+        "evidence": "router ospf 1",
+        "source_type": "public_configuration",
+        "split": "train"
+    },
+    {
+        "vendor": "juniper",
+        "platform": "junos",
+        "raw_config": "set interfaces ge-0/0/0 unit 0 description WAN_LINK",
+        "security_control": "UNKNOWN",
+        "security_category": "none",
+        "value": None,
+        "security_meaning": "Interface description string; does not affect device security baseline",
+        "evidence": "set interfaces ge-0/0/0 unit 0 description WAN_LINK",
+        "source_type": "public_configuration",
+        "split": "train"
+    },
+    {
+        "vendor": "arista",
+        "platform": "eos",
+        "raw_config": "vlan 100 name DATA_VLAN",
+        "security_control": "UNKNOWN",
+        "security_category": "none",
+        "value": None,
+        "security_meaning": "VLAN declaration statement; no direct administrative security control mapping",
+        "evidence": "vlan 100 name DATA_VLAN",
+        "source_type": "public_configuration",
+        "split": "train"
+    },
+    {
+        "vendor": "fortinet",
+        "platform": "fortios",
+        "raw_config": "set alias DMZ_INTERFACE",
+        "security_control": "UNKNOWN",
+        "security_category": "none",
+        "value": None,
+        "security_meaning": "Interface alias label; does not configure an access or management security control",
+        "evidence": "set alias DMZ_INTERFACE",
+        "source_type": "public_configuration",
+        "split": "validation"
+    },
+    {
+        "vendor": "huawei",
+        "platform": "vrp",
+        "raw_config": "sysname CORE_ROUTER_01",
+        "security_control": "UNKNOWN",
+        "security_category": "none",
+        "value": None,
+        "security_meaning": "System hostname configuration statement; non-security configuration",
+        "evidence": "sysname CORE_ROUTER_01",
+        "source_type": "public_configuration",
+        "split": "validation"
+    }
+]
+
+SYSTEM_PROMPT = """You are a network security semantic parser.
+Do not decide compliance.
+Interpret the configuration and map it to the closest security control.
+Return ONLY valid JSON.
+Never copy the raw configuration into security_control.
+The evidence field must reproduce the supplied configuration exactly.
+
+Supported canonical security_controls:
+- SSH_VERSION (value: 1, 2)
+- TELNET_ENABLED (value: true, false)
+- HTTP_MANAGEMENT (value: true, false)
+- SESSION_TIMEOUT (value: integer minutes)
+- AAA_ENABLED (value: true, false)
+- UNKNOWN (value: null, if configuration does not relate to network security)
+
+Output Schema:
+{
+  "security_control": "SSH_VERSION | TELNET_ENABLED | HTTP_MANAGEMENT | SESSION_TIMEOUT | AAA_ENABLED | UNKNOWN",
+  "security_category": "session_security | management_plane | access_control | none",
+  "value": 2 | true | false | 10 | null,
+  "security_meaning": "concise description of the security state created",
+  "evidence": "EXACT raw configuration string provided by user"
+}
+Output strictly valid JSON and nothing else."""
+
+def format_chat_record(item):
+    assistant_obj = {
+        "security_control": item["security_control"],
+        "security_category": item["security_category"],
+        "value": item["value"],
+        "security_meaning": item["security_meaning"],
+        "evidence": item["evidence"]
+    }
+    return {
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": f"Configuration: {item['raw_config']}"},
+            {"role": "assistant", "content": json.dumps(assistant_obj, indent=2)}
+        ],
+        "metadata": {
+            "vendor": item["vendor"],
+            "platform": item["platform"],
+            "source_type": item["source_type"]
+        }
+    }
+
+def main():
+    os.makedirs("data", exist_ok=True)
+    
+    # 1. Write semantic_mappings.jsonl
+    with open("data/semantic_mappings.jsonl", "w", encoding="utf-8") as f:
+        for r in DATASET:
+            f.write(json.dumps(r) + "\n")
+            
+    # 2. Split and write train.jsonl and validation.jsonl
+    train_records = [format_chat_record(r) for r in DATASET if r["split"] == "train"]
+    val_records = [format_chat_record(r) for r in DATASET if r["split"] == "validation"]
+    
+    with open("data/train.jsonl", "w", encoding="utf-8") as f:
+        for tr in train_records:
+            f.write(json.dumps(tr) + "\n")
+            
+    with open("data/validation.jsonl", "w", encoding="utf-8") as f:
+        for vr in val_records:
+            f.write(json.dumps(vr) + "\n")
+            
+    print(f"Dataset generated successfully:")
+    print(f"  data/semantic_mappings.jsonl: {len(DATASET)} total records")
+    print(f"  data/train.jsonl:             {len(train_records)} training records")
+    print(f"  data/validation.jsonl:        {len(val_records)} validation records")
+
+if __name__ == "__main__":
+    main()

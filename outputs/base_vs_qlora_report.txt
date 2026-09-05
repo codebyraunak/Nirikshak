@@ -1,0 +1,84 @@
+=====================================================================================
+HEXA-FORGE: BASE QWEN3-1.7B vs QLoRA ADAPTER COMPARISON REPORT
+Evaluation on 20-Case Strictly Held-Out Unseen Test Set
+=====================================================================================
+
+Metric                                 | Base         | QLoRA        | Change      
+-------------------------------------------------------------------------------------
+JSON Validity (%)                      | 100.0        | 100.0        | 0.0         
+Security Control Accuracy (%)          | 85.0         | 85.0         | 0.0         
+Security Category Accuracy (%)         | 70.0         | 90.0         | +20.0       
+Value Extraction Accuracy (%)          | 85.0         | 85.0         | 0.0         
+Evidence Exact-Match Accuracy (%)      | 95.0         | 95.0         | 0.0         
+Full Semantic Pass Rate (%)            | 60.0         | 80.0         | +20.0       
+UNKNOWN Accuracy (%)                   | 66.7         | 66.7         | 0.0         
+Average Inference Latency (s)          | 3.391        | 5.959        | +2.57       
+Peak VRAM Consumption (MiB)            | 2178.7       | 2178.7       | 0.0         
+=====================================================================================
+
+OVERALL SUMMARY:
+  - Total Unseen Cases Evaluated:       20
+  - Base Full Semantic Passes:           12/20 (60.0%)
+  - QLoRA Full Semantic Passes:          16/20 (80.0%)
+  - Net Pass Rate Delta:                 +20.0 percentage points
+  - Improvements (Base Wrong -> QLoRA OK): 4
+  - Regressions (Base OK -> QLoRA Wrong): 0
+  - Both Failed:                          4
+  - Both Passed:                          12
+
+=====================================================================================
+1. BASE WRONG -> QLoRA CORRECT (IMPROVEMENTS):
+=====================================================================================
+  [Case  6] arista eos | Raw: 'management telnet shutdown'
+    Expected: TELNET_ENABLED = False
+    Base:     TELNET_ENABLED = False (FAIL)
+    QLoRA:    TELNET_ENABLED = False (PASS)
+
+  [Case  8] cisco nxos | Raw: 'no feature telnet'
+    Expected: TELNET_ENABLED = False
+    Base:     TELNET_ENABLED = False (FAIL)
+    QLoRA:    TELNET_ENABLED = False (PASS)
+
+  [Case  9] cisco asa | Raw: 'http server enable'
+    Expected: HTTP_MANAGEMENT = True
+    Base:     HTTP_MANAGEMENT = True (FAIL)
+    QLoRA:    HTTP_MANAGEMENT = True (PASS)
+
+  [Case 17] cisco ios | Raw: 'login authentication default'
+    Expected: AAA_ENABLED = True
+    Base:     UNKNOWN = None (FAIL)
+    QLoRA:    AAA_ENABLED = True (PASS)
+
+=====================================================================================
+2. BASE CORRECT -> QLoRA WRONG (REGRESSIONS):
+=====================================================================================
+  (None)
+=====================================================================================
+3. BOTH WRONG (REMAINING EDGE CASES):
+=====================================================================================
+  [Case  3] juniper junos | Raw: 'system {\n    services {\n        ssh {\n            protocol-version v2;\n        }\n    }\n}'
+    Expected: SSH_VERSION = 2
+    Base:     SSH_VERSION = 2
+    QLoRA:    SSH_VERSION = 2
+
+  [Case  5] cisco ios | Raw: 'transport input telnet ssh'
+    Expected: TELNET_ENABLED = True
+    Base:     TELNET_ENABLED = False
+    QLoRA:    SSH_VERSION = 2
+
+  [Case 15] cisco nxos | Raw: 'feature tacacs+'
+    Expected: AAA_ENABLED = True
+    Base:     UNKNOWN = None
+    QLoRA:    UNKNOWN = None
+
+  [Case 20] arista eos | Raw: 'spanning-tree mode mstp'
+    Expected: UNKNOWN = None
+    Base:     SSH_VERSION = None
+    QLoRA:    SSH_VERSION = 1
+
+=====================================================================================
+EXPERIMENT INTEGRITY & GENERALIZATION NOTE:
+  - Test set data/test_unseen.jsonl was 100% held out during training.
+  - No hyperparameter tuning or dataset changes were made against test outcomes.
+  - Results are reported strictly for this 20-case test suite without extrapolation.
+=====================================================================================

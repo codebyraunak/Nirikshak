@@ -1,0 +1,302 @@
+import json
+import os
+
+UNSEEN_GROUND_TRUTH = [
+    # 1. SSH_VERSION (4 cases)
+    {
+        "id": 1,
+        "vendor": "cisco",
+        "platform": "asa",
+        "raw_config": "ssh version 1",
+        "security_control": "SSH_VERSION",
+        "security_category": "session_security",
+        "value": 1,
+        "security_meaning": "Cisco ASA SSH daemon is configured to permit insecure protocol version 1",
+        "evidence": "ssh version 1",
+        "source_type": "vendor_documentation",
+        "source_url": "https://www.cisco.com/c/en/us/td/docs/security/asa/asa916/configuration/general/asa-916-general-config/admin-management.html"
+    },
+    {
+        "id": 2,
+        "vendor": "huawei",
+        "platform": "vrp",
+        "raw_config": "ssh server compatible-ssh1x enable",
+        "security_control": "SSH_VERSION",
+        "security_category": "session_security",
+        "value": 1,
+        "security_meaning": "Huawei VRP SSH server enables compatibility with legacy SSH version 1.x clients",
+        "evidence": "ssh server compatible-ssh1x enable",
+        "source_type": "vendor_documentation",
+        "source_url": "https://support.huawei.com/enterprise/en/doc/EDOC1100278783/"
+    },
+    {
+        "id": 3,
+        "vendor": "juniper",
+        "platform": "junos",
+        "raw_config": "system {\n    services {\n        ssh {\n            protocol-version v2;\n        }\n    }\n}",
+        "security_control": "SSH_VERSION",
+        "security_category": "session_security",
+        "value": 2,
+        "security_meaning": "Junos hierarchical system configuration enforces SSH protocol version 2",
+        "evidence": "system {\n    services {\n        ssh {\n            protocol-version v2;\n        }\n    }\n}",
+        "source_type": "vendor_documentation",
+        "source_url": "https://www.juniper.net/documentation/us/en/software/junos/cli-reference/topics/ref/statement/protocol-version-edit-system-services-ssh.html"
+    },
+    {
+        "id": 4,
+        "vendor": "cisco",
+        "platform": "ios",
+        "raw_config": "crypto key generate rsa modulus 2048\nip ssh version 2",
+        "security_control": "SSH_VERSION",
+        "security_category": "session_security",
+        "value": 2,
+        "security_meaning": "RSA host keys are generated and SSH protocol version 2 is explicitly enforced",
+        "evidence": "crypto key generate rsa modulus 2048\nip ssh version 2",
+        "source_type": "vendor_documentation",
+        "source_url": "https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/sec_user_ssh/configuration/15-mt/sec-user-ssh-15-mt-book/sec-cfg-ssh-term.html"
+    },
+
+    # 2. TELNET_ENABLED (4 cases)
+    {
+        "id": 5,
+        "vendor": "cisco",
+        "platform": "ios",
+        "raw_config": "transport input telnet ssh",
+        "security_control": "TELNET_ENABLED",
+        "security_category": "session_security",
+        "value": True,
+        "security_meaning": "Terminal line allows incoming connections via both Telnet and SSH, leaving Telnet active",
+        "evidence": "transport input telnet ssh",
+        "source_type": "vendor_documentation",
+        "source_url": "https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/sec_user_ssh/configuration/15-mt/sec-user-ssh-15-mt-book/sec-cfg-ssh-term.html"
+    },
+    {
+        "id": 6,
+        "vendor": "arista",
+        "platform": "eos",
+        "raw_config": "management telnet shutdown",
+        "security_control": "TELNET_ENABLED",
+        "security_category": "session_security",
+        "value": False,
+        "security_meaning": "Arista EOS management Telnet server is administratively shut down",
+        "evidence": "management telnet shutdown",
+        "source_type": "vendor_documentation",
+        "source_url": "https://www.arista.com/en/um-eos/eos-management-plane"
+    },
+    {
+        "id": 7,
+        "vendor": "huawei",
+        "platform": "vrp",
+        "raw_config": "undo telnet server enable",
+        "security_control": "TELNET_ENABLED",
+        "security_category": "session_security",
+        "value": False,
+        "security_meaning": "Huawei VRP Telnet server service is globally disabled",
+        "evidence": "undo telnet server enable",
+        "source_type": "vendor_documentation",
+        "source_url": "https://support.huawei.com/enterprise/en/doc/EDOC1100278783/"
+    },
+    {
+        "id": 8,
+        "vendor": "cisco",
+        "platform": "nxos",
+        "raw_config": "no feature telnet",
+        "security_control": "TELNET_ENABLED",
+        "security_category": "session_security",
+        "value": False,
+        "security_meaning": "Cisco NX-OS Telnet server feature is administratively disabled",
+        "evidence": "no feature telnet",
+        "source_type": "vendor_documentation",
+        "source_url": "https://www.cisco.com/c/en/us/td/docs/switches/datacenter/nexus9000/sw/7-x/fundamentals/configuration/guide/b_Cisco_Nexus_9000_Series_NX-OS_Fundamentals_Configuration_Guide_7x.html"
+    },
+
+    # 3. HTTP_MANAGEMENT (3 cases)
+    {
+        "id": 9,
+        "vendor": "cisco",
+        "platform": "asa",
+        "raw_config": "http server enable",
+        "security_control": "HTTP_MANAGEMENT",
+        "security_category": "management_plane",
+        "value": True,
+        "security_meaning": "Cisco ASA internal web server is enabled for administrative management",
+        "evidence": "http server enable",
+        "source_type": "vendor_documentation",
+        "source_url": "https://www.cisco.com/c/en/us/td/docs/security/asa/asa916/configuration/general/asa-916-general-config/admin-management.html"
+    },
+    {
+        "id": 10,
+        "vendor": "cisco",
+        "platform": "asa",
+        "raw_config": "no http server enable",
+        "security_control": "HTTP_MANAGEMENT",
+        "security_category": "management_plane",
+        "value": False,
+        "security_meaning": "Cisco ASA internal web server is disabled",
+        "evidence": "no http server enable",
+        "source_type": "vendor_documentation",
+        "source_url": "https://www.cisco.com/c/en/us/td/docs/security/asa/asa916/configuration/general/asa-916-general-config/admin-management.html"
+    },
+    {
+        "id": 11,
+        "vendor": "juniper",
+        "platform": "junos",
+        "raw_config": "delete system services web-management http",
+        "security_control": "HTTP_MANAGEMENT",
+        "security_category": "management_plane",
+        "value": False,
+        "security_meaning": "Plaintext HTTP web management service configuration is deleted, disabling HTTP access",
+        "evidence": "delete system services web-management http",
+        "source_type": "vendor_documentation",
+        "source_url": "https://www.juniper.net/documentation/us/en/software/junos/cli-reference/topics/ref/statement/http-edit-system-services-web-management.html"
+    },
+
+    # 4. SESSION_TIMEOUT (3 cases)
+    {
+        "id": 12,
+        "vendor": "cisco",
+        "platform": "ios",
+        "raw_config": "exec-timeout 15 30",
+        "security_control": "SESSION_TIMEOUT",
+        "security_category": "session_security",
+        "value": 15,
+        "security_meaning": "Terminal session idle timeout is configured to 15 minutes and 30 seconds",
+        "evidence": "exec-timeout 15 30",
+        "source_type": "vendor_documentation",
+        "source_url": "https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/fundamentals/command/cf_command_ref/de_commands.html"
+    },
+    {
+        "id": 13,
+        "vendor": "arista",
+        "platform": "eos",
+        "raw_config": "idle-timeout 30",
+        "security_control": "SESSION_TIMEOUT",
+        "security_category": "session_security",
+        "value": 30,
+        "security_meaning": "Arista EOS CLI session inactivity timeout is set to 30 minutes",
+        "evidence": "idle-timeout 30",
+        "source_type": "vendor_documentation",
+        "source_url": "https://www.arista.com/en/um-eos/eos-management-plane"
+    },
+    {
+        "id": 14,
+        "vendor": "fortinet",
+        "platform": "fortios",
+        "raw_config": "set admintimeout 5",
+        "security_control": "SESSION_TIMEOUT",
+        "security_category": "session_security",
+        "value": 5,
+        "security_meaning": "FortiOS administrator inactivity timeout is restricted to 5 minutes",
+        "evidence": "set admintimeout 5",
+        "source_type": "vendor_documentation",
+        "source_url": "https://docs.fortinet.com/document/fortigate/7.4.0/cli-reference/10620/system-global"
+    },
+
+    # 5. AAA_ENABLED (3 cases)
+    {
+        "id": 15,
+        "vendor": "cisco",
+        "platform": "nxos",
+        "raw_config": "feature tacacs+",
+        "security_control": "AAA_ENABLED",
+        "security_category": "access_control",
+        "value": True,
+        "security_meaning": "Cisco NX-OS TACACS+ centralized AAA capability is enabled on the device",
+        "evidence": "feature tacacs+",
+        "source_type": "vendor_documentation",
+        "source_url": "https://www.cisco.com/c/en/us/td/docs/switches/datacenter/nexus9000/sw/7-x/security/configuration/guide/b_Cisco_Nexus_9000_Series_NX-OS_Security_Configuration_Guide_7x.html"
+    },
+    {
+        "id": 16,
+        "vendor": "huawei",
+        "platform": "vrp",
+        "raw_config": "undo aaa",
+        "security_control": "AAA_ENABLED",
+        "security_category": "access_control",
+        "value": False,
+        "security_meaning": "Huawei VRP AAA subsystem view is removed, disabling centralized AAA capability",
+        "evidence": "undo aaa",
+        "source_type": "vendor_documentation",
+        "source_url": "https://support.huawei.com/enterprise/en/doc/EDOC1100278783/"
+    },
+    {
+        "id": 17,
+        "vendor": "cisco",
+        "platform": "ios",
+        "raw_config": "login authentication default",
+        "security_control": "AAA_ENABLED",
+        "security_category": "access_control",
+        "value": True,
+        "security_meaning": "Terminal line is configured to use the default centralized AAA authentication method list",
+        "evidence": "login authentication default",
+        "source_type": "vendor_documentation",
+        "source_url": "https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/sec_usr_aaa/configuration/15-mt/sec-usr-aaa-15-mt-book.html"
+    },
+
+    # 6. UNKNOWN (3 cases)
+    {
+        "id": 18,
+        "vendor": "cisco",
+        "platform": "ios",
+        "raw_config": "ntp server 192.168.1.100",
+        "security_control": "UNKNOWN",
+        "security_category": "none",
+        "value": None,
+        "security_meaning": "Network Time Protocol synchronization server configuration; does not configure access or session security baseline",
+        "evidence": "ntp server 192.168.1.100",
+        "source_type": "public_configuration",
+        "source_url": "https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/bsm/command/bsm-cr-book.html"
+    },
+    {
+        "id": 19,
+        "vendor": "juniper",
+        "platform": "junos",
+        "raw_config": "set routing-options static route 0.0.0.0/0 next-hop 192.168.1.1",
+        "security_control": "UNKNOWN",
+        "security_category": "none",
+        "value": None,
+        "security_meaning": "Default static routing gateway definition; unrelated to administrative security controls",
+        "evidence": "set routing-options static route 0.0.0.0/0 next-hop 192.168.1.1",
+        "source_type": "public_configuration",
+        "source_url": "https://www.juniper.net/documentation/us/en/software/junos/cli-reference/topics/ref/statement/static-edit-routing-options.html"
+    },
+    {
+        "id": 20,
+        "vendor": "arista",
+        "platform": "eos",
+        "raw_config": "spanning-tree mode mstp",
+        "security_control": "UNKNOWN",
+        "security_category": "none",
+        "value": None,
+        "security_meaning": "Layer 2 Spanning Tree Multiple Spanning Tree Protocol mode configuration; non-security administrative control",
+        "evidence": "spanning-tree mode mstp",
+        "source_type": "public_configuration",
+        "source_url": "https://www.arista.com/en/um-eos/eos-spanning-tree"
+    }
+]
+
+def main():
+    os.makedirs("data", exist_ok=True)
+    
+    # Write test_unseen_ground_truth.jsonl (complete labels)
+    with open("data/test_unseen_ground_truth.jsonl", "w", encoding="utf-8") as f:
+        for r in UNSEEN_GROUND_TRUTH:
+            f.write(json.dumps(r) + "\n")
+            
+    # Write test_unseen.jsonl (hidden ground truth for model input)
+    with open("data/test_unseen.jsonl", "w", encoding="utf-8") as f:
+        for r in UNSEEN_GROUND_TRUTH:
+            unlabeled = {
+                "id": r["id"],
+                "vendor": r["vendor"],
+                "platform": r["platform"],
+                "raw_config": r["raw_config"]
+            }
+            f.write(json.dumps(unlabeled) + "\n")
+            
+    print("Unseen test set updated:")
+    print("  data/test_unseen_ground_truth.jsonl (20 labeled records)")
+    print("  data/test_unseen.jsonl (20 unlabeled model input records)")
+
+if __name__ == "__main__":
+    main()

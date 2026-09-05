@@ -1,0 +1,24 @@
+{
+  "base_model": "Qwen/Qwen3-1.7B",
+  "train_records": 38,
+  "epochs": 2,
+  "micro_batch_size": 1,
+  "gradient_accumulation_steps": 8,
+  "effective_batch_size": 8,
+  "max_seq_length": 512,
+  "learning_rate": 0.0002,
+  "lora_rank": 16,
+  "lora_alpha": 32,
+  "lora_dropout": 0.05,
+  "target_modules": [
+    "q_proj",
+    "k_proj",
+    "v_proj",
+    "o_proj"
+  ],
+  "trainable_parameters": 6422528,
+  "total_parameters": 1022354432,
+  "training_loss": 2.7745,
+  "training_duration_sec": 42.67,
+  "peak_vram_mb": 3215.3
+}

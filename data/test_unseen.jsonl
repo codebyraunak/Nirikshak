@@ -1,0 +1,20 @@
+{"id": 1, "vendor": "cisco", "platform": "asa", "raw_config": "ssh version 1"}
+{"id": 2, "vendor": "huawei", "platform": "vrp", "raw_config": "ssh server compatible-ssh1x enable"}
+{"id": 3, "vendor": "juniper", "platform": "junos", "raw_config": "system {\n    services {\n        ssh {\n            protocol-version v2;\n        }\n    }\n}"}
+{"id": 4, "vendor": "cisco", "platform": "ios", "raw_config": "crypto key generate rsa modulus 2048\nip ssh version 2"}
+{"id": 5, "vendor": "cisco", "platform": "ios", "raw_config": "transport input telnet ssh"}
+{"id": 6, "vendor": "arista", "platform": "eos", "raw_config": "management telnet shutdown"}
+{"id": 7, "vendor": "huawei", "platform": "vrp", "raw_config": "undo telnet server enable"}
+{"id": 8, "vendor": "cisco", "platform": "nxos", "raw_config": "no feature telnet"}
+{"id": 9, "vendor": "cisco", "platform": "asa", "raw_config": "http server enable"}
+{"id": 10, "vendor": "cisco", "platform": "asa", "raw_config": "no http server enable"}
+{"id": 11, "vendor": "juniper", "platform": "junos", "raw_config": "delete system services web-management http"}
+{"id": 12, "vendor": "cisco", "platform": "ios", "raw_config": "exec-timeout 15 30"}
+{"id": 13, "vendor": "arista", "platform": "eos", "raw_config": "idle-timeout 30"}
+{"id": 14, "vendor": "fortinet", "platform": "fortios", "raw_config": "set admintimeout 5"}
+{"id": 15, "vendor": "cisco", "platform": "nxos", "raw_config": "feature tacacs+"}
+{"id": 16, "vendor": "huawei", "platform": "vrp", "raw_config": "undo aaa"}
+{"id": 17, "vendor": "cisco", "platform": "ios", "raw_config": "login authentication default"}
+{"id": 18, "vendor": "cisco", "platform": "ios", "raw_config": "ntp server 192.168.1.100"}
+{"id": 19, "vendor": "juniper", "platform": "junos", "raw_config": "set routing-options static route 0.0.0.0/0 next-hop 192.168.1.1"}
+{"id": 20, "vendor": "arista", "platform": "eos", "raw_config": "spanning-tree mode mstp"}

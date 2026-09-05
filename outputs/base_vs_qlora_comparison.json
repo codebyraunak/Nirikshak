@@ -1,0 +1,356 @@
+{
+  "summary": {
+    "total_test_cases": 20,
+    "base_full_pass_count": 12,
+    "qlora_full_pass_count": 16,
+    "improved_cases_count": 4,
+    "regressed_cases_count": 0,
+    "both_wrong_count": 4,
+    "both_correct_count": 12
+  },
+  "metrics_comparison": [
+    {
+      "metric": "JSON Validity (%)",
+      "base": 100.0,
+      "qlora": 100.0,
+      "change": "0.0"
+    },
+    {
+      "metric": "Security Control Accuracy (%)",
+      "base": 85.0,
+      "qlora": 85.0,
+      "change": "0.0"
+    },
+    {
+      "metric": "Security Category Accuracy (%)",
+      "base": 70.0,
+      "qlora": 90.0,
+      "change": "+20.0"
+    },
+    {
+      "metric": "Value Extraction Accuracy (%)",
+      "base": 85.0,
+      "qlora": 85.0,
+      "change": "0.0"
+    },
+    {
+      "metric": "Evidence Exact-Match Accuracy (%)",
+      "base": 95.0,
+      "qlora": 95.0,
+      "change": "0.0"
+    },
+    {
+      "metric": "Full Semantic Pass Rate (%)",
+      "base": 60.0,
+      "qlora": 80.0,
+      "change": "+20.0"
+    },
+    {
+      "metric": "UNKNOWN Accuracy (%)",
+      "base": 66.7,
+      "qlora": 66.7,
+      "change": "0.0"
+    },
+    {
+      "metric": "Average Inference Latency (s)",
+      "base": 3.391,
+      "qlora": 5.959,
+      "change": "+2.57"
+    },
+    {
+      "metric": "Peak VRAM Consumption (MiB)",
+      "base": 2178.7,
+      "qlora": 2178.7,
+      "change": "0.0"
+    }
+  ],
+  "case_transitions": {
+    "base_wrong_qlora_correct": [
+      {
+        "id": 6,
+        "vendor": "arista",
+        "platform": "eos",
+        "raw_config": "management telnet shutdown",
+        "expected_control": "TELNET_ENABLED",
+        "expected_value": false,
+        "base_pred_control": "TELNET_ENABLED",
+        "base_pred_value": false,
+        "base_pass": false,
+        "qlora_pred_control": "TELNET_ENABLED",
+        "qlora_pred_value": false,
+        "qlora_pass": true
+      },
+      {
+        "id": 8,
+        "vendor": "cisco",
+        "platform": "nxos",
+        "raw_config": "no feature telnet",
+        "expected_control": "TELNET_ENABLED",
+        "expected_value": false,
+        "base_pred_control": "TELNET_ENABLED",
+        "base_pred_value": false,
+        "base_pass": false,
+        "qlora_pred_control": "TELNET_ENABLED",
+        "qlora_pred_value": false,
+        "qlora_pass": true
+      },
+      {
+        "id": 9,
+        "vendor": "cisco",
+        "platform": "asa",
+        "raw_config": "http server enable",
+        "expected_control": "HTTP_MANAGEMENT",
+        "expected_value": true,
+        "base_pred_control": "HTTP_MANAGEMENT",
+        "base_pred_value": true,
+        "base_pass": false,
+        "qlora_pred_control": "HTTP_MANAGEMENT",
+        "qlora_pred_value": true,
+        "qlora_pass": true
+      },
+      {
+        "id": 17,
+        "vendor": "cisco",
+        "platform": "ios",
+        "raw_config": "login authentication default",
+        "expected_control": "AAA_ENABLED",
+        "expected_value": true,
+        "base_pred_control": "UNKNOWN",
+        "base_pred_value": null,
+        "base_pass": false,
+        "qlora_pred_control": "AAA_ENABLED",
+        "qlora_pred_value": true,
+        "qlora_pass": true
+      }
+    ],
+    "base_correct_qlora_wrong": [],
+    "both_wrong": [
+      {
+        "id": 3,
+        "vendor": "juniper",
+        "platform": "junos",
+        "raw_config": "system {\n    services {\n        ssh {\n            protocol-version v2;\n        }\n    }\n}",
+        "expected_control": "SSH_VERSION",
+        "expected_value": 2,
+        "base_pred_control": "SSH_VERSION",
+        "base_pred_value": 2,
+        "base_pass": false,
+        "qlora_pred_control": "SSH_VERSION",
+        "qlora_pred_value": 2,
+        "qlora_pass": false
+      },
+      {
+        "id": 5,
+        "vendor": "cisco",
+        "platform": "ios",
+        "raw_config": "transport input telnet ssh",
+        "expected_control": "TELNET_ENABLED",
+        "expected_value": true,
+        "base_pred_control": "TELNET_ENABLED",
+        "base_pred_value": false,
+        "base_pass": false,
+        "qlora_pred_control": "SSH_VERSION",
+        "qlora_pred_value": 2,
+        "qlora_pass": false
+      },
+      {
+        "id": 15,
+        "vendor": "cisco",
+        "platform": "nxos",
+        "raw_config": "feature tacacs+",
+        "expected_control": "AAA_ENABLED",
+        "expected_value": true,
+        "base_pred_control": "UNKNOWN",
+        "base_pred_value": null,
+        "base_pass": false,
+        "qlora_pred_control": "UNKNOWN",
+        "qlora_pred_value": null,
+        "qlora_pass": false
+      },
+      {
+        "id": 20,
+        "vendor": "arista",
+        "platform": "eos",
+        "raw_config": "spanning-tree mode mstp",
+        "expected_control": "UNKNOWN",
+        "expected_value": null,
+        "base_pred_control": "SSH_VERSION",
+        "base_pred_value": null,
+        "base_pass": false,
+        "qlora_pred_control": "SSH_VERSION",
+        "qlora_pred_value": 1,
+        "qlora_pass": false
+      }
+    ],
+    "both_correct": [
+      {
+        "id": 1,
+        "vendor": "cisco",
+        "platform": "asa",
+        "raw_config": "ssh version 1",
+        "expected_control": "SSH_VERSION",
+        "expected_value": 1,
+        "base_pred_control": "SSH_VERSION",
+        "base_pred_value": 1,
+        "base_pass": true,
+        "qlora_pred_control": "SSH_VERSION",
+        "qlora_pred_value": 1,
+        "qlora_pass": true
+      },
+      {
+        "id": 2,
+        "vendor": "huawei",
+        "platform": "vrp",
+        "raw_config": "ssh server compatible-ssh1x enable",
+        "expected_control": "SSH_VERSION",
+        "expected_value": 1,
+        "base_pred_control": "SSH_VERSION",
+        "base_pred_value": 1,
+        "base_pass": true,
+        "qlora_pred_control": "SSH_VERSION",
+        "qlora_pred_value": 1,
+        "qlora_pass": true
+      },
+      {
+        "id": 4,
+        "vendor": "cisco",
+        "platform": "ios",
+        "raw_config": "crypto key generate rsa modulus 2048\nip ssh version 2",
+        "expected_control": "SSH_VERSION",
+        "expected_value": 2,
+        "base_pred_control": "SSH_VERSION",
+        "base_pred_value": 2,
+        "base_pass": true,
+        "qlora_pred_control": "SSH_VERSION",
+        "qlora_pred_value": 2,
+        "qlora_pass": true
+      },
+      {
+        "id": 7,
+        "vendor": "huawei",
+        "platform": "vrp",
+        "raw_config": "undo telnet server enable",
+        "expected_control": "TELNET_ENABLED",
+        "expected_value": false,
+        "base_pred_control": "TELNET_ENABLED",
+        "base_pred_value": false,
+        "base_pass": true,
+        "qlora_pred_control": "TELNET_ENABLED",
+        "qlora_pred_value": false,
+        "qlora_pass": true
+      },
+      {
+        "id": 10,
+        "vendor": "cisco",
+        "platform": "asa",
+        "raw_config": "no http server enable",
+        "expected_control": "HTTP_MANAGEMENT",
+        "expected_value": false,
+        "base_pred_control": "HTTP_MANAGEMENT",
+        "base_pred_value": false,
+        "base_pass": true,
+        "qlora_pred_control": "HTTP_MANAGEMENT",
+        "qlora_pred_value": false,
+        "qlora_pass": true
+      },
+      {
+        "id": 11,
+        "vendor": "juniper",
+        "platform": "junos",
+        "raw_config": "delete system services web-management http",
+        "expected_control": "HTTP_MANAGEMENT",
+        "expected_value": false,
+        "base_pred_control": "HTTP_MANAGEMENT",
+        "base_pred_value": false,
+        "base_pass": true,
+        "qlora_pred_control": "HTTP_MANAGEMENT",
+        "qlora_pred_value": false,
+        "qlora_pass": true
+      },
+      {
+        "id": 12,
+        "vendor": "cisco",
+        "platform": "ios",
+        "raw_config": "exec-timeout 15 30",
+        "expected_control": "SESSION_TIMEOUT",
+        "expected_value": 15,
+        "base_pred_control": "SESSION_TIMEOUT",
+        "base_pred_value": 15,
+        "base_pass": true,
+        "qlora_pred_control": "SESSION_TIMEOUT",
+        "qlora_pred_value": 15,
+        "qlora_pass": true
+      },
+      {
+        "id": 13,
+        "vendor": "arista",
+        "platform": "eos",
+        "raw_config": "idle-timeout 30",
+        "expected_control": "SESSION_TIMEOUT",
+        "expected_value": 30,
+        "base_pred_control": "SESSION_TIMEOUT",
+        "base_pred_value": 30,
+        "base_pass": true,
+        "qlora_pred_control": "SESSION_TIMEOUT",
+        "qlora_pred_value": 30,
+        "qlora_pass": true
+      },
+      {
+        "id": 14,
+        "vendor": "fortinet",
+        "platform": "fortios",
+        "raw_config": "set admintimeout 5",
+        "expected_control": "SESSION_TIMEOUT",
+        "expected_value": 5,
+        "base_pred_control": "SESSION_TIMEOUT",
+        "base_pred_value": 5,
+        "base_pass": true,
+        "qlora_pred_control": "SESSION_TIMEOUT",
+        "qlora_pred_value": 5,
+        "qlora_pass": true
+      },
+      {
+        "id": 16,
+        "vendor": "huawei",
+        "platform": "vrp",
+        "raw_config": "undo aaa",
+        "expected_control": "AAA_ENABLED",
+        "expected_value": false,
+        "base_pred_control": "AAA_ENABLED",
+        "base_pred_value": false,
+        "base_pass": true,
+        "qlora_pred_control": "AAA_ENABLED",
+        "qlora_pred_value": false,
+        "qlora_pass": true
+      },
+      {
+        "id": 18,
+        "vendor": "cisco",
+        "platform": "ios",
+        "raw_config": "ntp server 192.168.1.100",
+        "expected_control": "UNKNOWN",
+        "expected_value": null,
+        "base_pred_control": "UNKNOWN",
+        "base_pred_value": null,
+        "base_pass": true,
+        "qlora_pred_control": "UNKNOWN",
+        "qlora_pred_value": null,
+        "qlora_pass": true
+      },
+      {
+        "id": 19,
+        "vendor": "juniper",
+        "platform": "junos",
+        "raw_config": "set routing-options static route 0.0.0.0/0 next-hop 192.168.1.1",
+        "expected_control": "UNKNOWN",
+        "expected_value": null,
+        "base_pred_control": "UNKNOWN",
+        "base_pred_value": null,
+        "base_pass": true,
+        "qlora_pred_control": "UNKNOWN",
+        "qlora_pred_value": null,
+        "qlora_pass": true
+      }
+    ]
+  }
+}
