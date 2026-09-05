@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Nirikshak — Network Security Compliance Auditor</title>
+<style>
+:root{
+  --bg:#0B0C0E; --bg-alt:#0D0F11;
+  --panel:#121417; --panel-2:#161819;
+  --border:#232629; --border-soft:#1B1D20; --border-strong:#33373B;
+  --text:#E4E6E8; --text-dim:#93989E; --text-faint:#585D62;
+  --blue:#5B93C4; --blue-dim:#233543;
+  --amber:#C79A4F; --amber-dim:#3B331F;
+  --red:#BD5A52; --red-dim:#3A2422;
+  --green:#63A377; --green-dim:#1F2E24;
+  --mono:'Cascadia Mono','SFMono-Regular',Consolas,'Liberation Mono',monospace;
+  --sans:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13px;line-height:1.55;-webkit-font-smoothing:antialiased;overflow:hidden;}
+::selection{background:var(--blue-dim);color:#fff;}
+a{color:inherit;text-decoration:none;}
+button{font-family:inherit;}
+input{font-family:inherit;}
+::-webkit-scrollbar{width:8px;height:8px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border-strong);}
+.mono{font-family:var(--mono);}
+
+/* ===== SHELL ===== */
+.app{display:grid;grid-template-columns:196px 1fr;grid-template-rows:46px 1fr;height:100vh;}
+.sidebar{grid-row:1/3;background:var(--bg-alt);border-right:1px solid var(--border-soft);display:flex;flex-direction:column;}
+.sb-brand{padding:16px 18px 14px;border-bottom:1px solid var(--border-soft);display:flex;align-items:center;gap:9px;}
+.sb-brand .mark{width:20px;height:20px;flex:none;}
+.sb-brand .wm{font-weight:600;font-size:12.5px;letter-spacing:.04em;line-height:1.3;}
+.sb-brand .wm .f{color:var(--text-dim);font-weight:400;}
+.sb-nav{flex:1;padding:10px 8px;overflow-y:auto;}
+.sb-item{display:flex;align-items:center;gap:9px;padding:7px 10px;cursor:pointer;color:var(--text-dim);font-size:12.5px;border-left:2px solid transparent;}
+.sb-item svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.3;flex:none;}
+.sb-item:hover{color:var(--text);}
+.sb-item.active{color:var(--text);border-left:2px solid var(--blue);background:var(--panel);}
+.sb-item .n{margin-left:auto;font-size:10.5px;color:var(--text-faint);font-family:var(--mono);}
+.sb-foot{border-top:1px solid var(--border-soft);padding:12px 16px;}
+.sb-user{font-size:11.5px;color:var(--text-dim);}
+.sb-user .nm{color:var(--text);font-weight:500;}
+.sb-quote{font-size:10.5px;color:var(--text-faint);font-style:italic;margin-top:10px;line-height:1.5;}
+
+/* ===== TOP BAR ===== */
+.topbar{grid-column:2;display:flex;align-items:center;gap:16px;padding:0 22px;border-bottom:1px solid var(--border-soft);background:var(--bg-alt);}
+.searchbar{display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);padding:6px 10px;color:var(--text-faint);width:300px;}
+.searchbar svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.5;flex:none;}
+.searchbar input{flex:1;background:none;border:none;outline:none;color:var(--text);font-size:12px;}
+.searchbar input::placeholder{color:var(--text-faint);}
+.searchbar .kbd{font-size:9.5px;color:var(--text-faint);border:1px solid var(--border-strong);padding:1px 4px;font-family:var(--mono);}
+.topbar-right{display:flex;align-items:center;gap:16px;margin-left:auto;}
+.meta{font-family:var(--mono);font-size:10.5px;color:var(--text-faint);}
+.meta b{color:var(--text-dim);font-weight:500;}
+.env{font-size:10px;letter-spacing:.06em;color:var(--green);border:1px solid var(--green-dim);padding:2px 6px;}
+.icon-btn{width:26px;height:26px;display:flex;align-items:center;justify-content:center;color:var(--text-dim);cursor:pointer;position:relative;}
+.icon-btn:hover{color:var(--text);}
+.icon-btn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.4;}
+.notif-dot{position:absolute;top:4px;right:4px;width:5px;height:5px;background:var(--red);}
+.avatar{width:24px;height:24px;background:var(--panel-2);border:1px solid var(--border-strong);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:var(--blue);}
+
+/* ===== MAIN ===== */
+main{grid-column:2;overflow-y:auto;background:var(--bg);}
+.view{padding:24px 30px 60px;max-width:1240px;animation:fadein .1s ease-out;}
+@keyframes fadein{from{opacity:0;}to{opacity:1;}}
+.eyebrow{font-size:10.5px;letter-spacing:.08em;color:var(--text-faint);text-transform:uppercase;margin-bottom:4px;}
+.view-title{font-size:19px;font-weight:600;letter-spacing:-.005em;}
+.view-desc{color:var(--text-dim);font-size:12.5px;margin-top:5px;max-width:600px;}
+.flow-strip{display:flex;align-items:center;gap:8px;margin-top:10px;font-family:var(--mono);font-size:10px;color:var(--text-faint);letter-spacing:.04em;}
+.flow-strip .on{color:var(--blue);}
+.flow-strip span.sep{color:var(--border-strong);}
+.hr{height:1px;background:var(--border-soft);border:none;margin:18px 0;}
+.section-label{font-size:10.5px;letter-spacing:.08em;color:var(--text-faint);text-transform:uppercase;margin-bottom:12px;font-weight:500;}
+.panel{border:1px solid var(--border);background:var(--panel);}
+.panel-head{padding:9px 13px;border-bottom:1px solid var(--border-soft);font-size:11px;letter-spacing:.04em;color:var(--text-dim);}
+.panel-body{padding:13px;}
+.label{font-size:10px;letter-spacing:.06em;color:var(--text-faint);}
+.big-stat{font-family:var(--mono);font-weight:600;}
+.tag-word{font-size:11px;font-weight:600;letter-spacing:.02em;}
+.tag-word.critical{color:var(--red);} .tag-word.high{color:var(--amber);} .tag-word.medium{color:#B5A25A;} .tag-word.good{color:var(--green);} .tag-word.neutral{color:var(--text-faint);}
+.btn{font-size:11.5px;padding:6px 12px;border:1px solid var(--border-strong);background:var(--panel-2);color:var(--text);cursor:pointer;}
+.btn:hover{background:#1c1f22;}
+.btn:disabled{opacity:.4;cursor:default;}
+.btn-primary{background:var(--blue-dim);border-color:#3d5c72;color:#cfe0ec;}
+.btn-primary:hover{background:#324a58;}
+.btn-quiet{background:transparent;border-color:transparent;color:var(--text-dim);}
+.btn-quiet:hover{color:var(--text);}
+code,.code{font-family:var(--mono);font-size:12px;}
+.grid{display:grid;gap:0;}
+.row{display:flex;align-items:baseline;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border-soft);font-size:12.5px;}
+.row .k{color:var(--text-dim);}
+.row .v{font-family:var(--mono);}
+.input{background:var(--panel-2);border:1px solid var(--border);color:var(--text);font-size:12px;padding:6px 9px;outline:none;}
+.input::placeholder{color:var(--text-faint);}
+.chip{font-size:11px;padding:3px 9px;border:1px solid var(--border-strong);background:transparent;color:var(--text-dim);cursor:pointer;}
+.chip.active{color:var(--blue);border-color:var(--blue);}
+.table{width:100%;border-collapse:collapse;font-size:12.5px;}
+.table th{text-align:left;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--text-faint);font-weight:500;padding:7px 10px;border-bottom:1px solid var(--border-strong);}
+.table td{padding:9px 10px;border-bottom:1px solid var(--border-soft);}
+.table tr:hover td{background:var(--panel-2);}
+
+/* posture header block */
+.posture-block{display:flex;gap:56px;flex-wrap:wrap;}
+.posture-stat .n{font-size:26px;font-weight:600;font-family:var(--mono);}
+.posture-stat .l{font-size:11px;color:var(--text-faint);letter-spacing:.04em;margin-top:3px;}
+
+/* bars */
+.bar-row{margin-bottom:12px;display:grid;grid-template-columns:110px 1fr 44px;align-items:center;gap:10px;}
+.bar-row .nm{font-size:12px;color:var(--text-dim);}
+.bar-track{height:5px;background:var(--panel-2);}
+.bar-fill{height:100%;background:var(--blue);}
+.bar-row .pct{font-family:var(--mono);font-size:12px;text-align:right;}
+
+/* topology (minimal, no glow) */
+.topo-wrap{position:relative;height:400px;border:1px solid var(--border);background:var(--bg-alt);}
+.node{position:absolute;transform:translate(-50%,-50%);text-align:center;cursor:pointer;}
+.node-box{width:34px;height:34px;border:1px solid var(--border-strong);background:var(--panel);display:flex;align-items:center;justify-content:center;margin:0 auto;position:relative;}
+.node-box svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.4;}
+.node.green .node-box{color:var(--green);} .node.amber .node-box{color:var(--amber);} .node.red .node-box{color:var(--red);} .node.blue .node-box{color:var(--blue);} .node.grey .node-box{color:var(--text-faint);}
+.node.selected .node-box{border-color:var(--blue);}
+.node-dot{position:absolute;top:-3px;right:-3px;width:6px;height:6px;}
+.node-label{font-size:10px;color:var(--text-faint);margin-top:5px;}
+.topo-line{position:absolute;background:var(--border-strong);}
+.device-overlay{position:absolute;top:12px;left:12px;width:240px;background:var(--panel);border:1px solid var(--border-strong);padding:12px;}
+
+/* code viewer */
+.code-line{display:flex;padding:2px 12px;font-family:var(--mono);font-size:11.8px;color:var(--text-dim);white-space:pre;cursor:default;}
+.code-line .ln{width:22px;flex:none;color:var(--text-faint);user-select:none;}
+.code-line.click{cursor:pointer;}
+.code-line.hl{background:var(--amber-dim);color:#e8cfa0;border-left:2px solid var(--amber);padding-left:10px;}
+.code-line.hl-red{background:var(--red-dim);color:#e6b6b0;border-left:2px solid var(--red);padding-left:10px;}
+.code-line.hl-green{background:var(--green-dim);color:#b3d9c0;border-left:2px solid var(--green);padding-left:10px;}
+.code-line.hl.selected, .code-line.hl-red.selected{outline:1px solid var(--blue);}
+
+.flow-vert{font-family:var(--mono);font-size:12px;}
+.flow-vert .step{padding:6px 0;color:var(--text-dim);}
+.flow-vert .step.strong{color:var(--text);font-weight:600;}
+.flow-vert .arrow{color:var(--text-faint);padding-left:2px;}
+
+.confidence-bar{height:3px;background:var(--panel-2);margin-top:5px;}
+.confidence-fill{height:100%;background:var(--blue);}
+
+.diff-remove{background:var(--red-dim);color:#e6b6b0;padding:4px 10px;border-left:2px solid var(--red);font-family:var(--mono);font-size:12px;}
+.diff-add{background:var(--green-dim);color:#b3d9c0;padding:4px 10px;border-left:2px solid var(--green);font-family:var(--mono);font-size:12px;margin-top:4px;}
+
+.dropzone{border:1px dashed var(--border-strong);background:var(--bg-alt);padding:36px 20px;text-align:center;cursor:pointer;}
+.dropzone:hover{border-color:var(--blue);}
+.dropzone .dz-title{font-size:12.5px;color:var(--text);margin-bottom:5px;}
+.dropzone .dz-sub{font-size:11px;color:var(--text-faint);}
+.vendor-badge{font-size:10px;font-family:var(--mono);color:var(--text-dim);border:1px solid var(--border);padding:2px 7px;}
+.pipeline{display:flex;justify-content:space-between;position:relative;padding:16px 4px 4px;}
+.pipeline::before{content:'';position:absolute;top:20px;left:18px;right:18px;height:1px;background:var(--border-strong);}
+.pipe-step{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:6px;flex:1;}
+.pipe-dot{width:8px;height:8px;background:var(--panel-2);border:1px solid var(--border-strong);}
+.pipe-dot.done{background:var(--green);border-color:var(--green);}
+.pipe-dot.active{background:var(--blue);border-color:var(--blue);}
+.pipe-label{font-size:9.5px;color:var(--text-faint);text-align:center;}
+.pipe-label.done{color:var(--text-dim);} .pipe-label.active{color:var(--blue);}
+
+.copilot-input{display:flex;align-items:center;gap:10px;border:1px solid var(--border-strong);background:var(--panel);padding:9px 11px;}
+.copilot-input input{flex:1;background:transparent;border:none;outline:none;color:var(--text);font-family:var(--mono);font-size:12.5px;}
+.answer-row{padding:10px 13px;border-bottom:1px solid var(--border-soft);}
+.answer-row .k{font-size:10px;letter-spacing:.06em;color:var(--text-faint);margin-bottom:4px;text-transform:uppercase;}
+.answer-row .v{font-size:12.5px;}
+.answer-row.mono .v{font-family:var(--mono);}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="sidebar">
+    <div class="sb-brand">
+      <svg class="mark" viewBox="0 0 20 20" fill="none"><path d="M10 1 18 5.5 18 14.5 10 19 2 14.5 2 5.5Z" stroke="#5B93C4" stroke-width="1.3"/></svg>
+      <div class="wm">Nirik<span class="f">shak</span></div>
+    </div>
+    <div class="sb-nav" id="sbNav"></div>
+    <div class="sb-foot">
+      <div class="sb-user"><span class="nm">A. Sharma</span><br>Security Analyst</div>
+      <div class="sb-quote">&ldquo;Different syntax.<br>Same security intent.&rdquo;</div>
+    </div>
+  </div>
+
+  <div class="topbar">
+    <div class="searchbar">
+      <svg viewBox="0 0 18 18"><circle cx="8" cy="8" r="5.2"/><path d="M15.5 15.5L12 12"/></svg>
+      <input placeholder="Search devices, findings, controls...">
+      <span class="kbd">⌘K</span>
+    </div>
+    <div class="topbar-right">
+      <span class="env">PRODUCTION</span>
+      <span class="meta">AUDIT <b>NRK-2026-00931</b></span>
+      <span class="meta">PARSER <b>Cisco IOS-XE v17.9</b></span>
+      <span class="meta">MODEL <b>Qwen3-1.7B + Nirikshak Adapter</b></span>
+      <div class="icon-btn"><div class="notif-dot"></div><svg viewBox="0 0 18 18"><path d="M5 7a4 4 0 018 0c0 3 1 4 1 4H4s1-1 1-4Z"/><path d="M7.5 13.5a1.5 1.5 0 003 0"/></svg></div>
+      <div class="avatar">AS</div>
+    </div>
+  </div>
+
+  <main id="main"></main>
+</div>
+
+<script>
+/* ============================================================ DATA ============================================================ */
+const NAV = [
+  {id:'overview', label:'Overview', icon:'grid'},
+  {id:'deviceAudit', label:'Device Audit', icon:'upload'},
+  {id:'findings', label:'Findings', icon:'flag', n:12},
+  {id:'remediation', label:'Remediation', icon:'code'},
+  {id:'topology', label:'Topology & Drift', icon:'network'},
+  {id:'controls', label:'Security Controls', icon:'book'},
+  {id:'reports', label:'Reports', icon:'doc'},
+  {id:'parser', label:'Parser Engine', icon:'layers'},
+  {id:'copilot', label:'Copilot', icon:'query'},
+];
+const ICONS = {
+  grid:'<path d="M3 3h5v5H3zM10 3h5v5h-5zM3 10h5v5H3zM10 10h5v5h-5z"/>',
+  upload:'<path d="M9 12V4M9 4L6 7M9 4l3 3"/><path d="M3 13v1a2 2 0 002 2h8a2 2 0 002-2v-1"/>',
+  flag:'<path d="M4 2v14"/><path d="M4 3h9l-2 3 2 3H4"/>',
+  code:'<path d="M6 5L2 9l4 4"/><path d="M12 5l4 4-4 4"/>',
+  network:'<circle cx="9" cy="3" r="1.4"/><circle cx="3" cy="15" r="1.4"/><circle cx="15" cy="15" r="1.4"/><path d="M9 4.4V9M9 9L3 13.6M9 9l6 4.6"/>',
+  book:'<path d="M3 3h6a2 2 0 012 2v10a2 2 0 00-2-2H3z"/><path d="M15 3H9a2 2 0 00-2 2v10a2 2 0 012-2h6z"/>',
+  doc:'<path d="M4 2h7l3 3v11H4z"/><path d="M11 2v3h3"/>',
+  layers:'<path d="M9 2 16 6 9 10 2 6z"/><path d="M2 12l7 4 7-4"/>',
+  query:'<circle cx="9" cy="9" r="3"/><path d="M9 2v3M9 13v3M3 9H2M16 9h-1"/>',
+  globe:'<circle cx="9" cy="9" r="7"/><path d="M2 9h14M9 2c2.2 2 2.2 12 0 14M9 2c-2.2 2-2.2 12 0 14"/>',
+  warn:'<path d="M9 3l7 12H2Z"/><path d="M9 8v3"/>',
+  switch:'<rect x="2" y="6" width="14" height="6"/><path d="M5 9h.01M8 9h.01M11 9h.01"/>',
+  cloud:'<path d="M5.5 13a3.5 3.5 0 010-7 4.5 4.5 0 018.6-1.3A3.3 3.3 0 0113.5 13z"/>',
+  server:'<rect x="3" y="3" width="12" height="5"/><rect x="3" y="10" width="12" height="5"/>',
+};
+const DEVICES = {
+  'CORE-RTR-01': {vendor:'Cisco', platform:'IOS-XE v17.9', state:'DEGRADED', color:'amber', compliance:64, critical:3, high:3, lastChange:'Today, 14:32', x:38, y:46, icon:'switch'},
+  'EDGE-FW-01': {vendor:'Palo Alto', platform:'PAN-OS 11.1', state:'CRITICAL', color:'red', compliance:41, critical:1, high:2, lastChange:'Today, 09:12', x:38, y:22, icon:'warn'},
+  'RTR-EAST-02': {vendor:'Cisco', platform:'IOS-XE 17.6', state:'SECURE', color:'green', compliance:96, critical:0, high:0, lastChange:'Aug 28', x:20, y:70, icon:'server', label:'Distribution'},
+  'RTR-WEST-03': {vendor:'Juniper', platform:'Junos 22.4', state:'DEGRADED', color:'amber', compliance:71, critical:0, high:2, lastChange:'Today, 09:48', x:56, y:70, icon:'server', label:'Distribution'},
+  'CLOUD-GW-01': {vendor:'AWS', platform:'Transit GW', state:'SECURE', color:'green', compliance:100, critical:0, high:0, lastChange:'Jul 19', x:74, y:32, icon:'cloud'},
+  'SRV-FARM-01': {vendor:'—', platform:'Bare metal', state:'DEGRADED', color:'amber', compliance:78, critical:0, high:1, lastChange:'Aug 22', x:12, y:90, icon:'server', label:'Servers'},
+  'ENDPOINT-SEG': {vendor:'—', platform:'802.1X segment', state:'UNKNOWN', color:'grey', compliance:0, critical:0, high:0, lastChange:'Never scanned', x:38, y:90, icon:'switch', label:'Endpoints'},
+  'SVC-CLUSTER-A': {vendor:'VMware', platform:'NSX-T 4.1', state:'SECURE', color:'green', compliance:92, critical:0, high:1, lastChange:'Aug 30', x:64, y:90, icon:'server', label:'Services'},
+};
+const RECENT_AUDITS = [
+  {name:'CORE-RTR-01', vendor:'Cisco IOS', status:'HIGH', color:'high', risk:8.4},
+  {name:'FW-EDGE-02', vendor:'Fortinet', status:'WARN', color:'medium', risk:6.2},
+  {name:'SW-CORE-03', vendor:'Arista', status:'PASS', color:'good', risk:2.1},
+  {name:'RTR-WEST-03', vendor:'Junos', status:'WARN', color:'medium', risk:5.9},
+  {name:'CLOUD-GW-01', vendor:'AWS TGW', status:'PASS', color:'good', risk:1.2},
+];
+const SECURITY_EVENTS = [
+  {time:'14:32', text:'CORE-RTR-01 — SSH protocol version downgraded to 1', color:'critical'},
+  {time:'11:15', text:'EDGE-FW-01 — ACL policy modified, scope widened', color:'high'},
+  {time:'09:48', text:'RTR-WEST-03 — Interface description changed', color:'neutral'},
+  {time:'08:21', text:'CORE-RTR-01 — Administrative session established', color:'neutral'},
+];
+const FINDINGS = [
+  {id:'F-01', sev:'CRITICAL', title:'ACL permits ANY → ANY', asset:'EDGE-FW-01', platform:'PAN-OS', line:184, risk:9.6, riskFrom:2.1, framework:'CIS', control:'ACL_SCOPE', current:'ANY / ANY', required:'Scoped source/destination', raw:'access-list 101 permit ip any any'},
+  {id:'F-02', sev:'CRITICAL', title:'Telnet enabled', asset:'RTR-WEST-03', platform:'Junos', line:41, risk:9.1, riskFrom:1.8, framework:'CIS / NIST', control:'TELNET_ENABLED', current:'enabled', required:'disabled', raw:'transport input telnet'},
+  {id:'F-03', sev:'HIGH', title:'SSH version non-compliant', asset:'CORE-RTR-01', platform:'Cisco IOS', line:87, risk:8.4, riskFrom:3.1, framework:'CIS', control:'SSH_VERSION', current:'1', required:'2', raw:'ip ssh version 1'},
+  {id:'F-04', sev:'HIGH', title:'HTTP management enabled', asset:'EDGE-FW-01', platform:'PAN-OS', line:112, risk:7.9, riskFrom:2.4, framework:'CIS', control:'HTTP_MANAGEMENT', current:'enabled', required:'disabled', raw:'ip http server'},
+  {id:'F-05', sev:'MEDIUM', title:'NTP authentication missing', asset:'RTR-WEST-03', platform:'Junos', line:56, risk:5.2, riskFrom:2.0, framework:'DISA STIG', control:'NTP_AUTH', current:'none', required:'enabled', raw:'ntp server 10.0.0.1'},
+];
+const CONTROLS = [
+  {id:'SSH_VERSION', cat:'Session Security', type:'Integer', secure:'2', risk:'High', frameworks:['CIS','NIST','DISA STIG'], vendors:['Cisco','Fortinet','Juniper','Palo Alto']},
+  {id:'HTTP_MANAGEMENT', cat:'Network Access', type:'Boolean', secure:'disabled', risk:'High', frameworks:['CIS'], vendors:['Cisco','Palo Alto']},
+  {id:'TELNET_ENABLED', cat:'Session Security', type:'Boolean', secure:'disabled', risk:'Critical', frameworks:['CIS','NIST'], vendors:['Cisco','Juniper']},
+  {id:'ACL_SCOPE', cat:'Firewall', type:'Rule scope', secure:'Scoped source/destination', risk:'Critical', frameworks:['CIS'], vendors:['Palo Alto','Fortinet','Cisco']},
+  {id:'NTP_AUTH', cat:'Logging', type:'Boolean', secure:'enabled', risk:'Medium', frameworks:['DISA STIG','CERT-In'], vendors:['Cisco','Juniper']},
+  {id:'BGP_MD5_AUTH', cat:'Routing', type:'Boolean', secure:'enabled', risk:'High', frameworks:['NIST'], vendors:['Cisco','Juniper']},
+];
+const AUDIT_HISTORY = [
+  {id:'NRK-2026-00931', assets:148, date:'Today, 08:00', status:'COMPLETE'},
+  {id:'NRK-2026-00918', assets:146, date:'Aug 28', status:'COMPLETE'},
+  {id:'NRK-2026-00902', assets:144, date:'Aug 21', status:'COMPLETE'},
+];
+
+/* ============================================================ STATE ============================================================ */
+const state = {
+  view:'overview', selectedDevice:'CORE-RTR-01', selectedFinding:FINDINGS[0].id,
+  uploadStage:-1, unknownStatus:'PENDING', whatIf:null,
+  findingSearch:'', findingSevFilter:'ALL', controlSearch:'', selectedLine:87,
+};
+function el(html){const t=document.createElement('template');t.innerHTML=html.trim();return t.content.firstElementChild;}
+
+/* ============================================================ SIDEBAR / ROUTER ============================================================ */
+function renderSidebar(){
+  const nav=document.getElementById('sbNav'); nav.innerHTML='';
+  NAV.forEach(item=>{
+    const btn=el(`<div class="sb-item ${state.view===item.id?'active':''}"><svg viewBox="0 0 18 18">${ICONS[item.icon]}</svg><span>${item.label}</span>${item.n?`<span class="n">${item.n}</span>`:''}</div>`);
+    btn.addEventListener('click',()=>setView(item.id));
+    nav.appendChild(btn);
+  });
+}
+function setView(v){state.view=v;renderSidebar();renderMain();}
+function renderMain(){document.getElementById('main').innerHTML=`<div class="view">${(VIEWS[state.view]||viewOverview)()}</div>`;attachHandlers[state.view]&&attachHandlers[state.view]();}
+function flowStrip(active){
+  const steps=['CONFIG','INTERPRET','VALIDATE','COMPLY','REMEDIATE'];
+  return `<div class="flow-strip">${steps.map((s,i)=>`<span class="${s===active?'on':''}">${s}</span>${i<steps.length-1?'<span class="sep">→</span>':''}`).join('')}</div>`;
+}
+
+/* ============================================================ OVERVIEW ============================================================ */
+function viewOverview(){
+  return `
+  <div class="eyebrow">Nirikshak</div>
+  <div class="view-title">Security Posture</div>
+  ${flowStrip('')}
+
+  <div class="posture-block" style="margin-top:22px;">
+    <div class="posture-stat"><div class="n" style="color:var(--amber)">72%</div><div class="l">COMPLIANT</div></div>
+    <div class="posture-stat"><div class="n" style="color:var(--red)">6.4</div><div class="l">RISK INDEX</div></div>
+    <div class="posture-stat"><div class="n">148</div><div class="l">DEVICES</div></div>
+    <div class="posture-stat"><div class="n" style="color:var(--red)">12</div><div class="l">CRITICAL</div></div>
+  </div>
+
+  <hr class="hr">
+  <div class="section-label">Compliance</div>
+  ${bar('CIS',68)}
+  ${bar('NIST',76)}
+  ${bar('STIG',72)}
+  ${bar('CERT-In',65)}
+
+  <hr class="hr">
+  <div class="section-label">Recent Audits</div>
+  <table class="table">
+    <thead><tr><th>Device</th><th>Platform</th><th>Status</th><th>Risk</th></tr></thead>
+    <tbody>
+      ${RECENT_AUDITS.map(a=>`<tr style="cursor:pointer" onclick="state.selectedFinding=findingForAsset('${a.name}');setView('findings')">
+        <td class="mono">${a.name}</td><td>${a.vendor}</td><td><span class="tag-word ${a.color}">${a.status}</span></td><td class="mono">${a.risk}</td>
+      </tr>`).join('')}
+    </tbody>
+  </table>
+
+  <hr class="hr">
+  <div class="section-label">Recent Security Events</div>
+  ${SECURITY_EVENTS.map(e=>`<div class="row"><span class="k"><span class="mono" style="color:var(--text-faint);margin-right:12px;">${e.time}</span>${e.text}</span><span class="tag-word ${e.color}">${e.color!=='neutral'?e.color.toUpperCase():''}</span></div>`).join('')}
+
+  <hr class="hr">
+  <div class="section-label">System Status</div>
+  <div class="row"><span class="k">Parser Engine</span><span class="v" style="color:var(--green)">Online</span></div>
+  <div class="row"><span class="k">Interpretation Engine</span><span class="v" style="color:var(--green)">Online</span></div>
+  <div class="row"><span class="k">Compliance Engine</span><span class="v" style="color:var(--green)">Online</span></div>
+  <div class="row" style="border-bottom:none;"><span class="k">Last Successful Audit</span><span class="v">2 min ago</span></div>
+  `;
+}
+function findingForAsset(name){
+  const f=FINDINGS.find(f=>f.asset===name);
+  return f?f.id:FINDINGS[0].id;
+}
+function bar(name,pct){
+  return `<div class="bar-row"><span class="nm">${name}</span><div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div><span class="pct">${pct}%</span></div>`;
+}
+
+/* ============================================================ TOPOLOGY (shared) ============================================================ */
+function topoLines(){
+  return `<div class="topo-line" style="left:38%;top:5%;width:1px;height:17%;"></div>
+  <div class="topo-line" style="left:38%;top:22%;width:1px;height:12%;"></div>
+  <div class="topo-line" style="left:38%;top:32%;width:36%;height:1px;"></div>
+  <div class="topo-line" style="left:20%;top:46%;width:18%;height:1px;"></div>
+  <div class="topo-line" style="left:20%;top:46%;width:1px;height:24%;"></div>
+  <div class="topo-line" style="left:38%;top:46%;width:1px;height:24%;"></div>
+  <div class="topo-line" style="left:38%;top:46%;width:18%;height:1px;"></div>
+  <div class="topo-line" style="left:12%;top:70%;width:8%;height:1px;"></div>
+  <div class="topo-line" style="left:12%;top:70%;width:1px;height:20%;"></div>
+  <div class="topo-line" style="left:38%;top:70%;width:1px;height:20%;"></div>
+  <div class="topo-line" style="left:56%;top:70%;width:8%;height:1px;"></div>
+  <div class="topo-line" style="left:64%;top:70%;width:1px;height:20%;"></div>`;
+}
+function topoNode(name,x,y,forceIcon,forceColor,passive,forceLabel){
+  if(passive){
+    return `<div class="node ${forceColor}" style="left:${x}%;top:${y}%;"><div class="node-box"><svg viewBox="0 0 18 18">${ICONS[forceIcon]}</svg></div><div class="node-label">${forceLabel}</div></div>`;
+  }
+  const d=DEVICES[name], sel=state.selectedDevice===name;
+  return `<div class="node ${d.color} ${sel?'selected':''}" style="left:${x}%;top:${y}%;" data-device="${name}">
+    <div class="node-box"><span class="node-dot" style="background:var(--${d.color==='grey'?'text-faint':d.color})"></span><svg viewBox="0 0 18 18">${ICONS[d.icon]}</svg></div>
+    <div class="node-label">${d.label||name}</div>
+  </div>`;
+}
+function topologyMarkup(){
+  return `<div class="topo-wrap">
+    ${topoLines()}
+    ${topoNode(null,38,5,'globe','blue',true,'Internet')}
+    ${topoNode('EDGE-FW-01',38,22)}${topoNode('CORE-RTR-01',38,46)}${topoNode('CLOUD-GW-01',74,32)}
+    ${topoNode('RTR-EAST-02',20,70)}${topoNode('RTR-WEST-03',56,70)}
+    ${topoNode('SRV-FARM-01',12,90)}${topoNode('ENDPOINT-SEG',38,90)}${topoNode('SVC-CLUSTER-A',64,90)}
+    ${deviceOverlay()}
+  </div>`;
+}
+function deviceOverlay(){
+  const name=state.selectedDevice, d=DEVICES[name];
+  return `<div class="device-overlay">
+    <div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span class="mono" style="font-weight:600;">${name}</span><span class="tag-word ${d.color==='red'?'critical':d.color==='amber'?'high':d.color==='green'?'good':'neutral'}">${d.state}</span></div>
+    <div class="row" style="padding:5px 0;"><span class="k">Vendor</span><span class="v">${d.vendor}</span></div>
+    <div class="row" style="padding:5px 0;"><span class="k">Platform</span><span class="v">${d.platform}</span></div>
+    <div class="row" style="padding:5px 0;"><span class="k">Compliance</span><span class="v">${d.compliance}%</span></div>
+    <div class="row" style="padding:5px 0;border-bottom:none;"><span class="k">Last Change</span><span class="v">${d.lastChange}</span></div>
+    <button class="btn" style="width:100%;margin-top:9px;" onclick="setView('parser')">View Details</button>
+  </div>`;
+}
+function bindTopology(){document.querySelectorAll('[data-device]').forEach(n=>n.addEventListener('click',()=>{state.selectedDevice=n.dataset.device;renderMain();}));}
+
+/* ============================================================ DEVICE AUDIT ============================================================ */
+const PIPE_STAGES=['INGESTING','VENDOR DETECTION','PARSING','SEMANTIC ANALYSIS','COMPLIANCE EVALUATION'];
+function viewDeviceAudit(){
+  return `
+  <div class="eyebrow">Nirikshak</div>
+  <div class="view-title">Device Audit &amp; Ingestion</div>
+  <div class="view-desc">Upload vendor configuration files for parsing, interpretation, and compliance evaluation.</div>
+  <hr class="hr">
+  <div class="dropzone" id="dropzone"><div class="dz-title">Drop configuration files here, or click to browse</div><div class="dz-sub">Cisco · Fortinet · Palo Alto · Juniper · SONiC · Cloud</div></div>
+  <div id="pipelineWrap" style="margin-top:20px;display:${state.uploadStage>=0?'block':'none'};">
+    <div class="label" style="margin-bottom:6px;">core-rtr-01-running-config.txt</div>
+    <div class="pipeline">${PIPE_STAGES.map((s,i)=>`<div class="pipe-step"><div class="pipe-dot ${i<state.uploadStage?'done':i===state.uploadStage?'active':''}"></div><div class="pipe-label ${i<state.uploadStage?'done':i===state.uploadStage?'active':''}">${s}</div></div>`).join('')}</div>
+    <div style="margin-top:12px;font-size:12px;color:var(--text-dim);">${state.uploadStage>=PIPE_STAGES.length?'Ingestion complete — 3 new findings identified, compliance recalculated.':''}</div>
+  </div>
+  <hr class="hr">
+  <div class="section-label">Audit History</div>
+  <table class="table"><thead><tr><th>Audit ID</th><th>Assets</th><th>Date</th><th>Status</th></tr></thead>
+  <tbody>${AUDIT_HISTORY.map(a=>`<tr><td class="mono">${a.id}</td><td class="mono">${a.assets}</td><td>${a.date}</td><td><span class="tag-word good">${a.status}</span></td></tr>`).join('')}</tbody></table>
+  `;
+}
+
+/* ============================================================ PARSER ENGINE ============================================================ */
+function viewParser(){
+  return `
+  <div class="eyebrow">Nirikshak</div>
+  <div class="view-title">Parser Engine</div>
+  <div class="view-desc"><span class="mono">CORE-RTR-01</span> — configuration, interpretation, and security state.</div>
+  ${flowStrip('INTERPRET')}
+  <hr class="hr">
+  <div class="grid" style="grid-template-columns:1fr 320px;gap:20px;align-items:start;">
+    <div class="panel">
+      <div class="panel-head">RAW CONFIGURATION</div>
+      <div style="padding:8px 0;">
+        <div class="code-line"><span class="ln">14</span>interface GigabitEthernet0/1</div>
+        <div class="code-line hl-green"><span class="ln">15</span> ip address 10.10.10.1 255.255.255.0</div>
+        <div class="code-line hl click ${state.selectedLine===16?'selected':''}" data-line="16"><span class="ln">16</span> ip access-group OUTSIDE-IN in</div>
+        <div class="code-line hl-green"><span class="ln">17</span> no ip http server</div>
+        <div class="code-line hl-red click ${state.selectedLine===87?'selected':''}" data-line="87"><span class="ln">87</span>ip ssh version 1</div>
+        <div class="code-line"><span class="ln">88</span>transport input ssh</div>
+        <div class="code-line"><span class="ln">203</span>vendorX-security-session idle 300</div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">SECURITY INTERPRETATION</div>
+      <div class="panel-body" id="lineDetail">${lineDetail(state.selectedLine)}</div>
+    </div>
+  </div>
+  <div class="hr"></div>
+  <div class="row" style="cursor:pointer;" onclick="setView('unknown')"><span class="k">Line 203 — unrecognized construct <span class="mono" style="color:var(--text-faint)">vendorX-security-session idle 300</span></span><span class="tag-word neutral">Investigate →</span></div>
+  `;
+}
+function lineDetail(line){
+  const map = {
+    16:{control:'ACL_SCOPE', value:'OUTSIDE → INBOUND', conf:91, state:'REQUIRES REVIEW', color:'amber'},
+    87:{control:'SSH_VERSION', value:'1', conf:98, state:'NON-COMPLIANT', color:'red'},
+  };
+  const d=map[line]||map[87];
+  return `
+  <div class="label">MODEL</div>
+  <div class="mono" style="font-size:12px;margin-top:3px;color:var(--text-dim);">Qwen3-1.7B + Nirikshak Adapter</div>
+  <hr class="hr" style="margin:12px 0;">
+  <div class="label">INTERPRETATION</div>
+  <div class="mono" style="font-size:14px;margin-top:4px;">${d.control}</div>
+  <div class="label" style="margin-top:10px;">VALUE</div>
+  <div class="mono" style="font-size:13px;margin-top:4px;">${d.value}</div>
+  <div class="label" style="margin-top:10px;">CONFIDENCE</div>
+  <div class="mono" style="font-size:13px;margin-top:4px;">${d.conf}%</div>
+  <div class="confidence-bar"><div class="confidence-fill" style="width:${d.conf}%"></div></div>
+  <hr class="hr" style="margin:12px 0;">
+  <div class="label">SECURITY STATE</div>
+  <div class="mono" style="font-size:13px;margin-top:4px;color:var(--${d.color})">${d.state}</div>
+  `;
+}
+
+/* ============================================================ UNKNOWN CONSTRUCT ============================================================ */
+function viewUnknown(){
+  return `
+  <div class="eyebrow">Nirikshak</div>
+  <div class="view-title">Unknown Construct</div>
+  <hr class="hr">
+  <div class="mono" style="font-size:13px;color:var(--text-dim);">spanning-tree mode mstp</div>
+  <hr class="hr">
+  <div class="section-label">Security Interpretation</div>
+  <div class="row"><span class="k">Candidate</span><span class="v">SSH_VERSION</span></div>
+  <div class="row" style="border-bottom:none;"><span class="k">Confidence</span><span class="v" style="color:var(--amber)">18%</span></div>
+  <div class="confidence-bar" style="margin-top:2px;"><div class="confidence-fill" style="width:18%;background:var(--amber);"></div></div>
+
+  <hr class="hr">
+  ${state.unknownStatus==='PENDING'?`
+    <div style="font-size:12.5px;color:var(--text-dim);max-width:520px;">
+      <span class="tag-word high">LOW CONFIDENCE</span><br><br>
+      The system cannot confidently map this construct to a security control.
+    </div>
+    <div style="margin-top:16px;display:flex;gap:8px;">
+      <button class="btn" id="btnMarkUnknown">Mark as Unknown</button>
+      <button class="btn btn-quiet" id="btnReview">Review</button>
+    </div>
+  `:`
+    <div class="tag-word good">✓ VALIDATED</div>
+    <div style="font-size:12.5px;color:var(--text-dim);margin-top:8px;">Mapping stored for future audits.</div>
+  `}
+  `;
+}
+
+/* ============================================================ FINDINGS ============================================================ */
+function filteredFindings(){
+  return FINDINGS.filter(f=>{
+    const sevOk = state.findingSevFilter==='ALL' || f.sev===state.findingSevFilter;
+    const q = state.findingSearch.trim().toLowerCase();
+    const searchOk = !q || f.title.toLowerCase().includes(q) || f.asset.toLowerCase().includes(q) || f.control.toLowerCase().includes(q);
+    return sevOk && searchOk;
+  });
+}
+function viewFindings(){
+  const list=filteredFindings();
+  const f=FINDINGS.find(x=>x.id===state.selectedFinding)||list[0]||FINDINGS[0];
+  return `
+  <div class="eyebrow">Nirikshak</div>
+  <div class="view-title">Audit Findings</div>
+  <div class="view-desc">148 assets scanned · 12 critical · 27 high · 41 medium</div>
+  <hr class="hr">
+  <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center;">
+    <input class="input" id="findingSearch" placeholder="Search findings, assets, controls..." value="${state.findingSearch}" style="width:260px;">
+    ${['ALL','CRITICAL','HIGH','MEDIUM'].map(s=>`<div class="chip ${state.findingSevFilter===s?'active':''}" data-sev="${s}">${s}</div>`).join('')}
+  </div>
+  <div class="grid" style="grid-template-columns:360px 1fr;gap:20px;align-items:start;">
+    <div class="panel">
+      ${list.length?list.map(fd=>`<div class="row" style="padding:9px 12px;cursor:pointer;${fd.id===f.id?'background:var(--panel-2);':''}" data-id="${fd.id}"><span class="k"><span class="tag-word ${fd.sev==='CRITICAL'?'critical':fd.sev==='HIGH'?'high':'medium'}">${fd.sev}</span><br><span style="color:var(--text);font-size:12.5px;">${fd.title}</span></span><span class="v mono" style="color:var(--text-faint);font-size:10.5px;">${fd.asset}</span></div>`).join(''):'<div style="padding:20px 14px;color:var(--text-faint);font-size:12px;">No findings match this search.</div>'}
+    </div>
+    <div class="panel">
+      <div class="panel-body">
+        <span class="tag-word ${f.sev==='CRITICAL'?'critical':f.sev==='HIGH'?'high':'medium'}">${f.sev}</span>
+        <div style="font-size:15px;font-weight:600;margin-top:6px;">${f.title.toUpperCase()}</div>
+        <div class="mono" style="font-size:12px;color:var(--text-dim);margin-top:4px;">${f.asset} · ${f.platform}</div>
+        <hr class="hr">
+        <div class="row"><span class="k">OBSERVED</span><span class="v">${f.control} = ${f.current}</span></div>
+        <div class="row" style="border-bottom:none;"><span class="k">EXPECTED</span><span class="v" style="color:var(--green)">${f.control} = ${f.required}</span></div>
+        <hr class="hr">
+        <div class="label" style="margin-bottom:6px;">EVIDENCE</div>
+        <div class="code" style="color:var(--text-dim);">${f.raw}</div>
+        <div class="label" style="margin-top:3px;color:var(--text-faint)">Line ${f.line}</div>
+        <hr class="hr">
+        <div class="label" style="margin-bottom:8px;">SECURITY INTERPRETATION</div>
+        <div class="flow-vert">
+          <div class="step">Configuration</div><div class="arrow">↓</div>
+          <div class="step">${f.control}</div><div class="arrow">↓</div>
+          <div class="step">Value = ${f.current}</div><div class="arrow">↓</div>
+          <div class="step">${f.framework} requirement = ${f.required}</div><div class="arrow">↓</div>
+          <div class="step strong" style="color:var(--red)">FAIL</div>
+        </div>
+        <hr class="hr">
+        <button class="btn btn-primary" onclick="setView('remediation')">Propose Remediation</button>
+      </div>
+    </div>
+  </div>
+  `;
+}
+
+/* ============================================================ REMEDIATION ============================================================ */
+function viewRemediation(){
+  const f=FINDINGS.find(x=>x.id===state.selectedFinding)||FINDINGS[2];
+  const wi=state.whatIf;
+  return `
+  <div class="eyebrow">Nirikshak</div>
+  <div class="view-title">Remediation Studio</div>
+  <div class="view-desc">${f.title} · <span class="mono">${f.asset}</span></div>
+  ${flowStrip('VALIDATE')}
+  <hr class="hr">
+  <div style="max-width:460px;">
+    <div class="label" style="margin-bottom:6px;">BEFORE</div>
+    <div class="diff-remove">${f.raw}</div>
+    <div style="text-align:center;color:var(--text-faint);padding:8px 0;font-family:var(--mono);">↓</div>
+    <div class="label" style="margin-bottom:6px;">PROPOSED CHANGE</div>
+    <div class="diff-add">${f.raw.replace(f.current, f.required)}</div>
+    <div style="text-align:center;color:var(--text-faint);padding:8px 0;font-family:var(--mono);">↓</div>
+
+    <div class="label" style="margin-bottom:6px;">SIMULATION</div>
+    ${wi?`
+      <div class="row"><span class="k">${f.framework.split(' / ')[0]}</span><span class="v" style="color:var(--green)">PASS ✓</span></div>
+      <div class="row" style="border-bottom:none;"><span class="k">Risk</span><span class="v"><span style="color:var(--red)">${f.risk}</span> → <span style="color:var(--green)">${f.riskFrom}</span></span></div>
+    `:`<div style="font-size:12px;color:var(--text-faint);padding:6px 0;">Not yet run.</div>`}
+    <div style="text-align:center;color:var(--text-faint);padding:8px 0;font-family:var(--mono);">↓</div>
+
+    <div class="label" style="margin-bottom:8px;">HUMAN APPROVAL</div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn" id="btnValidate">${wi?'Re-run Simulation':'Run Simulation'}</button>
+      <button class="btn btn-primary" id="btnApprove" ${wi?'':'disabled'}>Approve Change</button>
+    </div>
+  </div>
+  `;
+}
+
+/* ============================================================ TOPOLOGY & DRIFT ============================================================ */
+function viewTopology(){
+  return `
+  <div class="eyebrow">Nirikshak</div>
+  <div class="view-title">Topology &amp; Drift</div>
+  <div class="view-desc">Network posture map and configuration drift history.</div>
+  <hr class="hr">
+  <div class="grid" style="grid-template-columns:1.6fr 1fr;gap:20px;align-items:start;">
+    <div class="panel"><div class="panel-head">NETWORK TOPOLOGY</div><div style="padding:12px;">${topologyMarkup()}</div></div>
+    <div class="panel"><div class="panel-head">CONFIGURATION DRIFT — <span class="mono">${state.selectedDevice}</span></div>
+      <div class="panel-body">
+        ${driftEntry('08:42','Baseline established')}
+        ${driftEntry('11:15','Configuration updated','Interface description changed — no security impact')}
+        ${driftEntry('14:32','Security drift detected',null,{before:'SSH_VERSION = 2',after:'SSH_VERSION = 1'})}
+      </div>
+    </div>
+  </div>
+  `;
+}
+function driftEntry(time,title,note,change){
+  return `<div style="padding:10px 0;border-bottom:1px solid var(--border-soft);">
+    <div style="display:flex;justify-content:space-between;"><span style="font-size:12.5px;font-weight:600;">${title}</span><span class="mono" style="font-size:11px;color:var(--text-faint);">${time}</span></div>
+    ${note?`<div style="font-size:12px;color:var(--text-dim);margin-top:4px;">${note}</div>`:''}
+    ${change?`<div class="mono" style="font-size:12px;margin-top:6px;"><span style="color:var(--text-dim);">${change.before}</span> → <span style="color:var(--red);">${change.after}</span></div><div style="font-size:11.5px;color:var(--text-dim);margin-top:4px;">Compliance ↓ · Risk ↑</div>`:''}
+  </div>`;
+}
+
+/* ============================================================ SECURITY CONTROLS ============================================================ */
+function filteredControls(){const q=state.controlSearch.trim().toLowerCase();if(!q) return CONTROLS;return CONTROLS.filter(c=>c.id.toLowerCase().includes(q)||c.cat.toLowerCase().includes(q));}
+function viewControls(){
+  const list=filteredControls();
+  return `
+  <div class="eyebrow">Nirikshak</div>
+  <div class="view-title">Security Controls</div>
+  <div class="view-desc">Vendor-neutral knowledge base of security controls and framework mappings.</div>
+  <hr class="hr">
+  <input class="input" id="controlSearch" placeholder="Search controls or categories..." value="${state.controlSearch}" style="width:280px;margin-bottom:12px;">
+  <table class="table"><thead><tr><th>Control</th><th>Category</th><th>Type</th><th>Secure Value</th><th>Risk</th><th>Frameworks</th></tr></thead>
+  <tbody>${list.map(c=>`<tr><td class="mono">${c.id}</td><td>${c.cat}</td><td class="mono">${c.type}</td><td class="mono" style="color:var(--green)">${c.secure}</td><td><span class="tag-word ${c.risk==='Critical'?'critical':c.risk==='High'?'high':'medium'}">${c.risk}</span></td><td style="color:var(--text-dim);font-size:11.5px;">${c.frameworks.join(' / ')}</td></tr>`).join('')}
+  ${!list.length?'<tr><td colspan="6" style="color:var(--text-faint);padding:16px;">No controls match this search.</td></tr>':''}</tbody></table>
+  `;
+}
+
+/* ============================================================ REPORTS ============================================================ */
+function viewReports(){
+  return `
+  <div class="eyebrow">Nirikshak</div>
+  <div class="view-title">Audit Reports</div>
+  <div class="view-desc">Formal compliance assessment deliverables.</div>
+  <hr class="hr">
+  <div class="panel" style="max-width:640px;">
+    <div class="panel-body">
+      <div class="label">Nirikshak</div>
+      <div style="font-size:16px;font-weight:600;margin-top:4px;">Security Compliance Assessment</div>
+      <hr class="hr">
+      <div class="row"><span class="k">Audit ID</span><span class="v">NRK-2026-00931</span></div>
+      <div class="row"><span class="k">Scope</span><span class="v">148 assets</span></div>
+      <div class="row"><span class="k">Frameworks</span><span class="v" style="font-family:var(--sans)">CIS / NIST / DISA STIG / CERT-In</span></div>
+      <div class="row"><span class="k">Compliance</span><span class="v">72.4%</span></div>
+      <div class="row" style="border-bottom:none;"><span class="k">Critical / High</span><span class="v" style="color:var(--red)">12 / 27</span></div>
+      <div style="margin-top:14px;display:flex;gap:8px;">
+        <button class="btn" id="btnExportJson">Export JSON</button>
+        <button class="btn btn-primary" id="btnExportPdf">Export PDF</button>
+      </div>
+    </div>
+  </div>
+  <hr class="hr">
+  <div class="section-label">Previous Audits</div>
+  <table class="table"><thead><tr><th>Audit ID</th><th>Assets</th><th>Date</th><th>Status</th></tr></thead>
+  <tbody>${AUDIT_HISTORY.map(a=>`<tr><td class="mono">${a.id}</td><td class="mono">${a.assets}</td><td>${a.date}</td><td><span class="tag-word good">${a.status}</span></td></tr>`).join('')}</tbody></table>
+  `;
+}
+
+/* ============================================================ COPILOT ============================================================ */
+function viewCopilot(){
+  return `
+  <div class="eyebrow">Nirikshak</div>
+  <div class="view-title">Copilot</div>
+  <div class="view-desc">Every answer is grounded in system evidence — configuration lines, controls, and framework mappings.</div>
+  <hr class="hr">
+  <div class="copilot-input"><span class="label" style="flex:none;">QUERY</span><input id="copilotQuery" type="text" value="Why is CORE-RTR-01 non-compliant?" /><button class="btn btn-primary" id="copilotAsk">Run</button></div>
+  <div class="panel" style="margin-top:14px;" id="copilotAnswer">${copilotAnswer()}</div>
+  `;
+}
+function copilotAnswer(){
+  return `
+  <div class="answer-row"><div class="k">Root Cause</div><div class="v">SSH protocol version is configured as version 1.</div></div>
+  <div class="answer-row mono"><div class="k">Evidence</div><div class="v">ip ssh version 1<br><span style="color:var(--text-faint)">Line 87 · CORE-RTR-01</span></div></div>
+  <div class="answer-row mono"><div class="k">Security Control</div><div class="v">SSH_VERSION</div></div>
+  <div class="answer-row mono"><div class="k">Requirement</div><div class="v">SSH_VERSION = 2</div></div>
+  <div class="answer-row"><div class="k">Framework</div><div class="v">CIS</div></div>
+  <div class="answer-row"><div class="k">Risk</div><div class="v" style="color:var(--red)">HIGH</div></div>
+  <div class="answer-row" style="border-bottom:none;"><div class="k">Recommendation</div><div class="v">Change SSH protocol version to 2 and re-validate.</div></div>
+  `;
+}
+
+/* ============================================================ VIEW REGISTRY ============================================================ */
+const VIEWS = {overview:viewOverview, deviceAudit:viewDeviceAudit, findings:viewFindings, remediation:viewRemediation, topology:viewTopology, controls:viewControls, reports:viewReports, parser:viewParser, unknown:viewUnknown, copilot:viewCopilot};
+
+const attachHandlers = {
+  overview(){},
+  topology(){ bindTopology(); },
+  deviceAudit(){
+    const dz=document.getElementById('dropzone');
+    dz.addEventListener('click',()=>{
+      if(state.uploadStage>=0) return;
+      state.uploadStage=0; renderMain();
+      const step=()=>{ state.uploadStage++; renderMain(); if(state.uploadStage<PIPE_STAGES.length){ setTimeout(step,600); } };
+      setTimeout(step,450);
+    });
+  },
+  parser(){
+    document.querySelectorAll('.code-line.click').forEach(l=>{
+      l.addEventListener('click',()=>{state.selectedLine=parseInt(l.dataset.line);renderMain();});
+    });
+  },
+  unknown(){
+    const m=document.getElementById('btnMarkUnknown'), r=document.getElementById('btnReview');
+    if(m) m.addEventListener('click',()=>{state.unknownStatus='VALIDATED';renderMain();});
+    if(r) r.addEventListener('click',()=>{state.unknownStatus='VALIDATED';renderMain();});
+  },
+  findings(){
+    document.querySelectorAll('[data-id]').forEach(row=>row.addEventListener('click',()=>{state.selectedFinding=row.dataset.id;renderMain();}));
+    document.querySelectorAll('.chip').forEach(chip=>chip.addEventListener('click',()=>{state.findingSevFilter=chip.dataset.sev;renderMain();}));
+    const search=document.getElementById('findingSearch');
+    if(search){ search.addEventListener('input',()=>{state.findingSearch=search.value; renderMain(); const s=document.getElementById('findingSearch'); s.focus(); s.setSelectionRange(s.value.length,s.value.length);}); }
+  },
+  remediation(){
+    const v=document.getElementById('btnValidate'); if(v) v.addEventListener('click',()=>{state.whatIf={done:true};renderMain();});
+    const ap=document.getElementById('btnApprove'); if(ap) ap.addEventListener('click',()=>{ap.textContent='Approved';ap.disabled=true;});
+  },
+  controls(){
+    const search=document.getElementById('controlSearch');
+    if(search){ search.addEventListener('input',()=>{state.controlSearch=search.value; renderMain(); const s=document.getElementById('controlSearch'); s.focus(); s.setSelectionRange(s.value.length,s.value.length);}); }
+  },
+  reports(){ ['btnExportJson','btnExportPdf'].forEach(id=>{const b=document.getElementById(id); if(b) b.addEventListener('click',()=>{const orig=b.textContent;b.textContent='Done';setTimeout(()=>b.textContent=orig,1100);});}); },
+  copilot(){ document.getElementById('copilotAsk').addEventListener('click',()=>{document.getElementById('copilotAnswer').innerHTML=copilotAnswer();}); },
+};
+
+renderSidebar();
+renderMain();
+</script>
+</body>
+</html>
+
