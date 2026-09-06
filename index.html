@@ -281,8 +281,76 @@ const state = {
   view:'overview', selectedDevice:'CORE-RTR-01', selectedFinding:FINDINGS[0].id,
   uploadStage:-1, unknownStatus:'PENDING', whatIf:null,
   findingSearch:'', findingSevFilter:'ALL', controlSearch:'', selectedLine:87,
+  auditResult: null,
+  auditLoading: false,
+  auditError: null,
 };
 function el(html){const t=document.createElement('template');t.innerHTML=html.trim();return t.content.firstElementChild;}
+function getRealFindings() {
+  const result = state.auditResult;
+
+  const assessments = Array.isArray(result?.compliance?.assessments)
+    ? result.compliance.assessments
+    : [];
+
+  return assessments
+    .filter(a => String(a.status || '').toUpperCase() === 'FAIL')
+    .map((a, index) => {
+      const evidence =
+        Array.isArray(a.evidence)
+        ? a.evidence[0]
+        : (a.evidence || null);
+
+      return {
+        id: `REAL-${index + 1}`,
+        sev: String(a.severity || 'MEDIUM').toUpperCase(),
+        title: a.control_id || a.control || 'Security Control Failed',
+        asset: result?.filename || 'Uploaded Configuration',
+        platform: result?.vendor_detection?.platform || 'Unknown',
+        line: evidence?.line || '—',
+        control: a.control_id || a.control || '—',
+        current: a.actual ?? '—',
+        required: a.expected ?? '—',        framework: result?.compliance?.framework || 'CIS',
+        raw: evidence?.raw || 'Evidence not available'      };
+    });
+}
+function getAuditStats() {
+  const result = state.auditResult;
+
+  if (!result || !result.compliance) {
+    return {
+      auditId: '—',
+      assets: 0,
+      compliance: 0,
+      passed: 0,
+      failed: 0,
+      critical: 0,
+      high: 0,
+      medium: 0,
+    };
+  }
+
+  const compliance = result.compliance;
+
+  const assessments = Array.isArray(compliance.assessments)
+    ? compliance.assessments
+    : [];
+
+  const failed = assessments.filter(
+    a => String(a.status || '').toUpperCase() === 'FAIL'
+  );
+
+  return {
+    auditId: result.audit_id || `NRK-${Date.now()}`,
+    assets: 1,
+    compliance: Number(compliance.compliance_percentage || 0),
+    passed: Number(compliance.passed || 0),
+    failed: Number(compliance.failed || 0),
+    critical: failed.filter(a => String(a.severity || '').toUpperCase() === 'CRITICAL').length,
+    high: failed.filter(a => String(a.severity || '').toUpperCase() === 'HIGH').length,
+    medium: failed.filter(a => String(a.severity || '').toUpperCase() === 'MEDIUM').length,
+  };
+}
 
 /* ============================================================ SIDEBAR / ROUTER ============================================================ */
 function renderSidebar(){
@@ -302,46 +370,128 @@ function flowStrip(active){
 
 /* ============================================================ OVERVIEW ============================================================ */
 function viewOverview(){
+  const stats = getAuditStats();
+  const result = state.auditResult;
+
+  const compliance = stats.compliance;
+  const riskIndex = stats.failed
+    ? Math.min(10, (stats.failed / Math.max(stats.passed + stats.failed, 1)) * 10)
+    : 0;
+
+  const vendor = result?.vendor_detection?.vendor || '—';
+  const platform = result?.vendor_detection?.platform || '—';
+
   return `
   <div class="eyebrow">Nirikshak</div>
   <div class="view-title">Security Posture</div>
   ${flowStrip('')}
 
   <div class="posture-block" style="margin-top:22px;">
-    <div class="posture-stat"><div class="n" style="color:var(--amber)">72%</div><div class="l">COMPLIANT</div></div>
-    <div class="posture-stat"><div class="n" style="color:var(--red)">6.4</div><div class="l">RISK INDEX</div></div>
-    <div class="posture-stat"><div class="n">148</div><div class="l">DEVICES</div></div>
-    <div class="posture-stat"><div class="n" style="color:var(--red)">12</div><div class="l">CRITICAL</div></div>
+    <div class="posture-stat">
+      <div class="n" style="color:${compliance >= 80 ? 'var(--green)' : compliance >= 60 ? 'var(--amber)' : 'var(--red)'}">
+        ${compliance.toFixed(2)}%
+      </div>
+      <div class="l">COMPLIANT</div>
+    </div>
+
+    <div class="posture-stat">
+      <div class="n" style="color:${riskIndex >= 7 ? 'var(--red)' : riskIndex >= 4 ? 'var(--amber)' : 'var(--green)'}">
+        ${riskIndex.toFixed(1)}
+      </div>
+      <div class="l">RISK INDEX</div>
+    </div>
+
+    <div class="posture-stat">
+      <div class="n">${stats.assets}</div>
+      <div class="l">CONFIGURATIONS</div>
+    </div>
+
+    <div class="posture-stat">
+      <div class="n" style="color:${stats.critical > 0 ? 'var(--red)' : 'var(--green)'}">
+        ${stats.critical}
+      </div>
+      <div class="l">CRITICAL</div>
+    </div>
   </div>
 
   <hr class="hr">
+
+  <div class="section-label">Current Audit</div>
+
+  <div class="row">
+    <span class="k">Vendor</span>
+    <span class="v">${vendor}</span>
+  </div>
+
+  <div class="row" style="border-bottom:none;">
+    <span class="k">Platform</span>
+    <span class="v">${platform}</span>
+  </div>
+
+  <hr class="hr">
+
   <div class="section-label">Compliance</div>
-  ${bar('CIS',68)}
-  ${bar('NIST',76)}
-  ${bar('STIG',72)}
-  ${bar('CERT-In',65)}
+
+  ${bar('CIS', compliance)}
+
+  ${bar(
+    'Passed Controls',
+    stats.passed + stats.failed
+      ? (stats.passed / (stats.passed + stats.failed)) * 100
+      : 0
+  )}
+
+  ${bar(
+    'Failed Controls',
+    stats.passed + stats.failed
+      ? (stats.failed / (stats.passed + stats.failed)) * 100
+      : 0
+  )}
 
   <hr class="hr">
-  <div class="section-label">Recent Audits</div>
-  <table class="table">
-    <thead><tr><th>Device</th><th>Platform</th><th>Status</th><th>Risk</th></tr></thead>
-    <tbody>
-      ${RECENT_AUDITS.map(a=>`<tr style="cursor:pointer" onclick="state.selectedFinding=findingForAsset('${a.name}');setView('findings')">
-        <td class="mono">${a.name}</td><td>${a.vendor}</td><td><span class="tag-word ${a.color}">${a.status}</span></td><td class="mono">${a.risk}</td>
-      </tr>`).join('')}
-    </tbody>
-  </table>
+
+  <div class="section-label">Finding Summary</div>
+
+  <div class="row">
+    <span class="k">Critical</span>
+    <span class="v" style="color:var(--red)">${stats.critical}</span>
+  </div>
+
+  <div class="row">
+    <span class="k">High</span>
+    <span class="v" style="color:var(--amber)">${stats.high}</span>
+  </div>
+
+  <div class="row" style="border-bottom:none;">
+    <span class="k">Medium</span>
+    <span class="v">${stats.medium}</span>
+  </div>
 
   <hr class="hr">
-  <div class="section-label">Recent Security Events</div>
-  ${SECURITY_EVENTS.map(e=>`<div class="row"><span class="k"><span class="mono" style="color:var(--text-faint);margin-right:12px;">${e.time}</span>${e.text}</span><span class="tag-word ${e.color}">${e.color!=='neutral'?e.color.toUpperCase():''}</span></div>`).join('')}
 
-  <hr class="hr">
   <div class="section-label">System Status</div>
-  <div class="row"><span class="k">Parser Engine</span><span class="v" style="color:var(--green)">Online</span></div>
-  <div class="row"><span class="k">Interpretation Engine</span><span class="v" style="color:var(--green)">Online</span></div>
-  <div class="row"><span class="k">Compliance Engine</span><span class="v" style="color:var(--green)">Online</span></div>
-  <div class="row" style="border-bottom:none;"><span class="k">Last Successful Audit</span><span class="v">2 min ago</span></div>
+
+  <div class="row">
+    <span class="k">Parser Engine</span>
+    <span class="v" style="color:var(--green)">Online</span>
+  </div>
+
+  <div class="row">
+    <span class="k">Interpretation Engine</span>
+    <span class="v" style="color:var(--green)">Online</span>
+  </div>
+
+  <div class="row">
+    <span class="k">Compliance Engine</span>
+    <span class="v" style="color:var(--green)">Online</span>
+  </div>
+
+  <div class="row" style="border-bottom:none;">
+    <span class="k">Audit Status</span>
+    <span class="v" style="color:${result ? 'var(--green)' : 'var(--text-faint)'}">
+      ${result ? 'Completed' : 'No audit run'}
+    </span>
+  </div>
   `;
 }
 function findingForAsset(name){
@@ -402,22 +552,792 @@ function bindTopology(){document.querySelectorAll('[data-device]').forEach(n=>n.
 
 /* ============================================================ DEVICE AUDIT ============================================================ */
 const PIPE_STAGES=['INGESTING','VENDOR DETECTION','PARSING','SEMANTIC ANALYSIS','COMPLIANCE EVALUATION'];
-function viewDeviceAudit(){
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function renderCompliance(compliance) {
+  if (!compliance) {
+    return `
+      <div class="panel">
+        <div class="panel-head">COMPLIANCE ASSESSMENT</div>
+        <div style="padding:20px;color:var(--text-dim);">
+          No compliance assessment available.
+        </div>
+      </div>
+    `;
+  }
+
+  const percentage = Number(compliance.compliance_percentage ?? 0);
+  const passed = Number(compliance.passed ?? 0);
+  const failed = Number(compliance.failed ?? 0);
+  const total = Number(compliance.total_assessed ?? 0);
+  const framework = escapeHtml(compliance.framework ?? 'CIS');
+
+  const assessments = Array.isArray(compliance.assessments)
+    ? compliance.assessments
+    : [];
+
   return `
-  <div class="eyebrow">Nirikshak</div>
-  <div class="view-title">Device Audit &amp; Ingestion</div>
-  <div class="view-desc">Upload vendor configuration files for parsing, interpretation, and compliance evaluation.</div>
-  <hr class="hr">
-  <div class="dropzone" id="dropzone"><div class="dz-title">Drop configuration files here, or click to browse</div><div class="dz-sub">Cisco · Fortinet · Palo Alto · Juniper · SONiC · Cloud</div></div>
-  <div id="pipelineWrap" style="margin-top:20px;display:${state.uploadStage>=0?'block':'none'};">
-    <div class="label" style="margin-bottom:6px;">core-rtr-01-running-config.txt</div>
-    <div class="pipeline">${PIPE_STAGES.map((s,i)=>`<div class="pipe-step"><div class="pipe-dot ${i<state.uploadStage?'done':i===state.uploadStage?'active':''}"></div><div class="pipe-label ${i<state.uploadStage?'done':i===state.uploadStage?'active':''}">${s}</div></div>`).join('')}</div>
-    <div style="margin-top:12px;font-size:12px;color:var(--text-dim);">${state.uploadStage>=PIPE_STAGES.length?'Ingestion complete — 3 new findings identified, compliance recalculated.':''}</div>
-  </div>
-  <hr class="hr">
-  <div class="section-label">Audit History</div>
-  <table class="table"><thead><tr><th>Audit ID</th><th>Assets</th><th>Date</th><th>Status</th></tr></thead>
-  <tbody>${AUDIT_HISTORY.map(a=>`<tr><td class="mono">${a.id}</td><td class="mono">${a.assets}</td><td>${a.date}</td><td><span class="tag-word good">${a.status}</span></td></tr>`).join('')}</tbody></table>
+    <div class="panel">
+      <div class="panel-head">COMPLIANCE ASSESSMENT</div>
+
+      <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:1px;background:var(--border);margin-top:1px;">
+
+        <div style="background:var(--panel);padding:20px;">
+          <div class="label">FRAMEWORK</div>
+          <div style="font-size:22px;font-weight:600;margin-top:8px;">
+            ${framework}
+          </div>
+        </div>
+
+        <div style="background:var(--panel);padding:20px;">
+          <div class="label">COMPLIANCE</div>
+          <div style="font-size:28px;font-weight:700;margin-top:8px;">
+            ${percentage.toFixed(2)}%
+          </div>
+        </div>
+
+        <div style="background:var(--panel);padding:20px;">
+          <div class="label">PASSED</div>
+          <div style="font-size:28px;font-weight:700;margin-top:8px;">
+            ${passed}
+          </div>
+        </div>
+
+        <div style="background:var(--panel);padding:20px;">
+          <div class="label">FAILED</div>
+          <div style="font-size:28px;font-weight:700;margin-top:8px;">
+            ${failed}
+          </div>
+        </div>
+
+      </div>
+
+      <div style="padding:18px 20px;border-top:1px solid var(--border);">
+        <div class="label" style="margin-bottom:12px;">
+          CONTROL ASSESSMENTS · ${total}
+        </div>
+
+        ${assessments.map(a => {
+          const status = String(a.status ?? '').toUpperCase();
+          const isPass = status === 'PASS';
+
+          return `
+            <div style="
+              display:grid;
+              grid-template-columns:1.5fr 100px 120px;
+              gap:16px;
+              padding:12px 0;
+              border-bottom:1px solid var(--border);
+              align-items:center;
+            ">
+              <div class="mono">
+                ${escapeHtml(a.control_id ?? 'UNKNOWN')}
+              </div>
+
+              <div class="mono">
+                ${escapeHtml(String(a.actual ?? '—'))}
+              </div>
+
+              <div style="
+                font-weight:600;
+                color:${isPass ? 'var(--green)' : 'var(--red)'};
+              ">
+                ${isPass ? 'PASS' : 'FAIL'}
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function viewDeviceAudit() {
+  const result = state.auditResult;
+  const loading = state.auditLoading;
+  const error = state.auditError;
+
+  return `
+    <div class="eyebrow">Nirikshak</div>
+
+    <div class="view-title">Device Audit &amp; Ingestion</div>
+
+    <div class="view-desc">
+      Upload vendor configuration files for parsing, interpretation, and compliance evaluation.
+    </div>
+
+    <hr class="hr">
+
+    <!-- =========================
+         CONFIGURATION UPLOAD
+    ========================== -->
+
+    <div class="dropzone" id="dropzone">
+
+      <input
+        type="file"
+        id="configFileInput"
+        accept=".conf,.cfg,.txt"
+        style="display:none;"
+      />
+
+      <div class="dz-title">
+        ${
+          loading
+            ? 'Analyzing configuration…'
+            : 'Drop configuration files here, or click to browse'
+        }
+      </div>
+
+      <div class="dz-sub">
+        Supported: Cisco IOS / IOS-XE · .conf · .cfg · .txt
+      </div>
+
+    </div>
+
+
+    <!-- =========================
+         ANALYSIS PIPELINE
+    ========================== -->
+
+    ${
+      loading
+        ? `
+          <div id="pipelineWrap" style="margin-top:20px;">
+
+            <div class="label" style="margin-bottom:6px;">
+              Analyzing configuration
+            </div>
+
+            <div class="pipeline">
+
+              ${PIPE_STAGES.map((stage, index) => `
+                <div class="pipe-step">
+
+                  <div
+                    class="pipe-dot ${
+                      index === state.uploadStage
+                        ? 'active'
+                        : index < state.uploadStage
+                          ? 'done'
+                          : ''
+                    }"
+                  ></div>
+
+                  <div
+                    class="pipe-label ${
+                      index === state.uploadStage
+                        ? 'active'
+                        : index < state.uploadStage
+                          ? 'done'
+                          : ''
+                    }"
+                  >
+                    ${escapeHtml(stage)}
+                  </div>
+
+                </div>
+              `).join('')}
+
+            </div>
+
+            <div
+              style="
+                margin-top:12px;
+                font-size:12px;
+                color:var(--text-dim);
+              "
+            >
+              Processing with the HEXA-FORGE security analysis engine…
+            </div>
+
+          </div>
+        `
+        : ''
+    }
+
+
+    <!-- =========================
+         ERROR MESSAGE
+    ========================== -->
+
+    ${
+      error
+        ? `
+          <div
+            class="panel"
+            style="
+              margin-top:20px;
+              border-color:var(--red);
+            "
+          >
+
+            <div class="panel-head">
+              AUDIT ERROR
+            </div>
+
+            <div
+              style="
+                padding:16px;
+                color:var(--red);
+                font-size:13px;
+              "
+            >
+              ${escapeHtml(error)}
+            </div>
+
+          </div>
+        `
+        : ''
+    }
+
+
+    <!-- =========================
+         REAL AUDIT RESULT
+    ========================== -->
+
+    ${
+      result
+        ? `
+
+          <hr class="hr">
+
+          <div class="section-label">
+            AUDIT RESULT
+          </div>
+
+
+          <!-- =========================
+               SUMMARY CARDS
+          ========================== -->
+
+          <div
+            class="grid-3"
+            style="margin-top:12px;"
+          >
+
+
+            <!-- FILE -->
+
+            <div class="panel">
+
+              <div class="panel-head">
+                FILE
+              </div>
+
+              <div style="padding:16px;">
+
+                <div
+                  class="mono"
+                  style="font-size:13px;"
+                >
+                  ${escapeHtml(
+                    result.filename || 'Uploaded configuration'
+                  )}
+                </div>
+
+                <div
+                  style="
+                    margin-top:8px;
+                    font-size:12px;
+                    color:var(--text-dim);
+                  "
+                >
+                  ${Number(result.line_count ?? 0)} configuration lines
+                </div>
+
+              </div>
+
+            </div>
+
+
+            <!-- VENDOR -->
+
+            <div class="panel">
+
+              <div class="panel-head">
+                VENDOR
+              </div>
+
+              <div style="padding:16px;">
+
+                <div
+                  class="mono"
+                  style="font-size:18px;"
+                >
+                  ${escapeHtml(
+                    result.vendor_detection?.vendor || 'Unknown'
+                  )}
+                </div>
+
+                <div
+                  style="
+                    margin-top:8px;
+                    font-size:12px;
+                    color:var(--text-dim);
+                  "
+                >
+                  ${escapeHtml(
+                    result.vendor_detection?.platform ||
+                    'Platform not detected'
+                  )}
+                </div>
+
+              </div>
+
+            </div>
+
+
+            <!-- PARSER -->
+
+            <div class="panel">
+
+              <div class="panel-head">
+                PARSER
+              </div>
+
+              <div style="padding:16px;">
+
+                <div
+                  class="mono"
+                  style="font-size:13px;"
+                >
+                  ${escapeHtml(
+                    result.parser || 'Unknown'
+                  )}
+                </div>
+
+                <div
+                  style="
+                    margin-top:8px;
+                    font-size:12px;
+                    color:var(--text-dim);
+                  "
+                >
+                  ${Number(
+                    result.semantic_model?.object_count ?? 0
+                  )} semantic objects
+                </div>
+
+              </div>
+
+            </div>
+
+          </div>
+
+
+          <!-- =========================
+               SEMANTIC SECURITY MODEL
+          ========================== -->
+
+          <div
+            class="panel"
+            style="margin-top:20px;"
+          >
+
+            <div class="panel-head">
+              SEMANTIC SECURITY MODEL
+            </div>
+
+            <div style="overflow:auto;">
+
+              <table class="table">
+
+                <thead>
+
+                  <tr>
+                    <th>Control</th>
+                    <th>Category</th>
+                    <th>Value</th>
+                    <th>Source</th>
+                    <th>Evidence</th>
+                  </tr>
+
+                </thead>
+
+
+                <tbody>
+
+                  ${
+                    Array.isArray(
+                      result.semantic_model?.semantic_objects
+                    )
+                      ? result.semantic_model.semantic_objects
+                          .map(obj => {
+
+                            const control =
+                              obj?.control_id || 'UNKNOWN';
+
+                            const category =
+                              obj?.category ||
+                              obj?.security_category ||
+                              'unknown';
+
+                            let value = '';
+
+                            if (
+                              obj?.value !== null &&
+                              obj?.value !== undefined
+                            ) {
+                              value =
+                                typeof obj.value === 'object'
+                                  ? JSON.stringify(obj.value)
+                                  : String(obj.value);
+                            }
+
+                            const source =
+                              obj?.source || 'parser';
+
+                            const evidence =
+                              obj?.evidence || null;
+
+                            const evidenceLine =
+                              evidence?.line ??
+                              '—';
+
+                            const evidenceRaw =
+                              evidence?.raw ||
+                              evidence?.text ||
+                              '';
+
+                            return `
+
+                              <tr>
+
+                                <td class="mono">
+                                  ${escapeHtml(control)}
+                                </td>
+
+                                <td>
+                                  ${escapeHtml(category)}
+                                </td>
+
+                                <td class="mono">
+                                  ${escapeHtml(value)}
+                                </td>
+
+                                <td>
+
+                                  <span
+                                    class="tag-word ${
+                                      source === 'human_approved_mapping'
+                                        ? 'good'
+                                        : source === 'qwen'
+                                          ? 'warn'
+                                          : ''
+                                    }"
+                                  >
+                                    ${escapeHtml(source)}
+                                  </span>
+
+                                </td>
+
+                                <td class="mono">
+
+                                  ${
+                                    evidence
+                                      ? `Line ${escapeHtml(
+                                          evidenceLine
+                                        )}: ${escapeHtml(
+                                          evidenceRaw
+                                        )}`
+                                      : '—'
+                                  }
+
+                                </td>
+
+                              </tr>
+
+                            `;
+                          })
+                          .join('')
+                      : ''
+                  }
+
+
+                  ${
+                    !Array.isArray(
+                      result.semantic_model?.semantic_objects
+                    ) ||
+                    result.semantic_model.semantic_objects.length === 0
+                      ? `
+                        <tr>
+
+                          <td
+                            colspan="5"
+                            style="
+                              text-align:center;
+                              color:var(--text-dim);
+                              padding:24px;
+                            "
+                          >
+                            No semantic objects detected.
+                          </td>
+
+                        </tr>
+                      `
+                      : ''
+                  }
+
+                </tbody>
+
+              </table>
+
+            </div>
+
+          </div>
+
+
+          <!-- =========================
+               AI / ADAPTIVE KNOWLEDGE
+          ========================== -->
+
+          ${
+            Array.isArray(result.ai_interpretations) &&
+            result.ai_interpretations.length > 0
+              ? `
+
+                <div
+                  class="panel"
+                  style="margin-top:20px;"
+                >
+
+                  <div class="panel-head">
+                    AI / ADAPTIVE KNOWLEDGE INTERPRETATIONS
+                  </div>
+
+
+                  <div style="overflow:auto;">
+
+                    <table class="table">
+
+                      <thead>
+
+                        <tr>
+                          <th>Line</th>
+                          <th>Configuration</th>
+                          <th>Control</th>
+                          <th>Confidence</th>
+                          <th>Status</th>
+                        </tr>
+
+                      </thead>
+
+
+                      <tbody>
+
+                        ${result.ai_interpretations
+                          .map(ai => {
+
+                            const confidence =
+                              typeof ai?.confidence === 'number'
+                                ? Math.round(
+                                    ai.confidence * 100
+                                  ) + '%'
+                                : '—';
+
+                            let statusHtml = '';
+
+                            if (
+                              ai?.source ===
+                              'human_approved_mapping'
+                            ) {
+
+                              statusHtml =
+                                '<span class="tag-word good">APPROVED MAPPING</span>';
+
+                            } else if (
+                              ai?.requires_human_validation
+                            ) {
+
+                              statusHtml =
+                                '<span class="tag-word warn">REQUIRES REVIEW</span>';
+
+                            } else {
+
+                              statusHtml =
+                                '<span class="tag-word good">AI INTERPRETED</span>';
+
+                            }
+
+                            return `
+
+                              <tr>
+
+                                <td class="mono">
+                                  ${escapeHtml(
+                                    ai?.input_line ?? '—'
+                                  )}
+                                </td>
+
+                                <td class="mono">
+                                  ${escapeHtml(
+                                    ai?.input_text || ''
+                                  )}
+                                </td>
+
+                                <td class="mono">
+                                  ${escapeHtml(
+                                    ai?.security_control ||
+                                    'UNKNOWN'
+                                  )}
+                                </td>
+
+                                <td class="mono">
+                                  ${confidence}
+                                </td>
+
+                                <td>
+                                  ${statusHtml}
+                                </td>
+
+                              </tr>
+
+                            `;
+
+                          })
+                          .join('')}
+
+                      </tbody>
+
+                    </table>
+
+                  </div>
+
+                </div>
+
+              `
+              : ''
+          }
+
+
+          <!-- =========================
+               CIS COMPLIANCE
+          ========================== -->
+
+          <div
+            class="panel"
+            style="margin-top:20px;"
+          >
+
+            <div class="panel-head">
+              ${
+                escapeHtml(
+                  result.compliance?.framework ||
+                  'CIS'
+                )
+              } CONTROL ASSESSMENT
+            </div>
+
+            <div style="padding:16px;">
+
+              ${
+                typeof renderCompliance === 'function'
+                  ? renderCompliance(result.compliance)
+                  : `
+                    <div
+                      style="
+                        color:var(--text-dim);
+                        padding:10px 0;
+                      "
+                    >
+                      Compliance renderer unavailable.
+                    </div>
+                  `
+              }
+
+            </div>
+
+          </div>
+
+        `
+        : ''
+    }
+
+
+    <!-- =========================
+         CURRENT AUDIT
+    ========================== -->
+
+    <hr class="hr">
+
+    <div class="section-label">
+      Current Audit
+    </div>
+
+    <table class="table">
+
+      <thead>
+
+        <tr>
+          <th>Configuration</th>
+          <th>Assets</th>
+          <th>Status</th>
+        </tr>
+
+      </thead>
+
+
+      <tbody>
+
+        ${
+          result
+            ? `
+
+              <tr>
+
+                <td class="mono">
+                  ${escapeHtml(
+                    result.filename ||
+                    'Uploaded configuration'
+                  )}
+                </td>
+
+                <td class="mono">
+                  1
+                </td>
+
+                <td>
+                  <span class="tag-word good">
+                    COMPLETE
+                  </span>
+                </td>
+
+              </tr>
+
+            `
+            : `
+
+              <tr>
+
+                <td
+                  colspan="3"
+                  style="
+                    text-align:center;
+                    color:var(--text-dim);
+                    padding:20px;
+                  "
+                >
+                  No audit has been run yet.
+                </td>
+
+              </tr>
+
+            `
+        }
+
+      </tbody>
+
+    </table>
+
   `;
 }
 
@@ -514,81 +1434,709 @@ function filteredFindings(){
   });
 }
 function viewFindings(){
-  const list=filteredFindings();
-  const f=FINDINGS.find(x=>x.id===state.selectedFinding)||list[0]||FINDINGS[0];
+  const result = state.auditResult;
+  const assessments = Array.isArray(result?.compliance?.assessments)
+    ? result.compliance.assessments
+    : [];
+
+  // Convert backend assessments into the format used by the Findings UI
+  const realFindings = assessments
+    .filter(a => String(a.status || '').toUpperCase() === 'FAIL')
+    .map((a, index) => {
+      const evidence = Array.isArray(a.evidence) && a.evidence.length
+        ? a.evidence[0]
+        : null;
+
+      const severity = String(a.severity || 'MEDIUM').toUpperCase();
+
+      return {
+        id: `REAL-${index + 1}`,
+        sev: severity,
+        title: a.control_id || a.control || 'Security Control Failed',
+        asset: result?.filename || 'Uploaded Configuration',
+        platform: result?.vendor_detection?.platform || 'Unknown',
+        line: evidence?.line || '—',
+        control: a.control_id || a.control || '—',
+        current: a.actual_value ?? a.current_value ?? a.observed_value ?? '—',
+        required: a.expected_value ?? a.required_value ?? '—',
+        framework: result?.compliance?.framework || 'CIS',
+        raw: evidence?.text || 'Evidence not available'
+      };
+    });
+
+  const list = realFindings.filter(fd => {
+    const search = state.findingSearch.trim().toLowerCase();
+
+    const matchesSearch =
+      !search ||
+      JSON.stringify(fd).toLowerCase().includes(search);
+
+    const matchesSeverity =
+      state.findingSevFilter === 'ALL' ||
+      fd.sev === state.findingSevFilter;
+
+    return matchesSearch && matchesSeverity;
+  });
+
+  const f =
+    list.find(x => x.id === state.selectedFinding) ||
+    list[0] ||
+    realFindings[0];
+
+  const stats = getAuditStats();
+
+  if (!result || !realFindings.length) {
+    return `
+      <div class="eyebrow">Nirikshak</div>
+      <div class="view-title">Audit Findings</div>
+      <div class="view-desc">
+        ${result ? 'No failed controls were found in this audit.' : 'Run an audit to view real security findings.'}
+      </div>
+      <hr class="hr">
+
+      <div class="panel">
+        <div class="panel-body" style="padding:30px;text-align:center;color:var(--text-faint);">
+          ${result
+            ? '✓ No compliance failures detected.'
+            : 'Upload a configuration from Device Audit & Ingestion to generate findings.'}
+        </div>
+      </div>
+    `;
+  }
+
   return `
   <div class="eyebrow">Nirikshak</div>
+
   <div class="view-title">Audit Findings</div>
-  <div class="view-desc">148 assets scanned · 12 critical · 27 high · 41 medium</div>
-  <hr class="hr">
-  <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center;">
-    <input class="input" id="findingSearch" placeholder="Search findings, assets, controls..." value="${state.findingSearch}" style="width:260px;">
-    ${['ALL','CRITICAL','HIGH','MEDIUM'].map(s=>`<div class="chip ${state.findingSevFilter===s?'active':''}" data-sev="${s}">${s}</div>`).join('')}
+
+  <div class="view-desc">
+    ${stats.assets} configuration${stats.assets === 1 ? '' : 's'}
+    assessed ·
+    ${stats.critical} critical ·
+    ${stats.high} high ·
+    ${stats.medium} medium
   </div>
+
+  <hr class="hr">
+
+  <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center;">
+    <input
+      class="input"
+      id="findingSearch"
+      placeholder="Search findings, controls..."
+      value="${state.findingSearch}"
+      style="width:260px;"
+    >
+
+    ${['ALL','CRITICAL','HIGH','MEDIUM'].map(s => `
+      <div
+        class="chip ${state.findingSevFilter===s?'active':''}"
+        data-sev="${s}"
+      >${s}</div>
+    `).join('')}
+  </div>
+
   <div class="grid" style="grid-template-columns:360px 1fr;gap:20px;align-items:start;">
+
     <div class="panel">
-      ${list.length?list.map(fd=>`<div class="row" style="padding:9px 12px;cursor:pointer;${fd.id===f.id?'background:var(--panel-2);':''}" data-id="${fd.id}"><span class="k"><span class="tag-word ${fd.sev==='CRITICAL'?'critical':fd.sev==='HIGH'?'high':'medium'}">${fd.sev}</span><br><span style="color:var(--text);font-size:12.5px;">${fd.title}</span></span><span class="v mono" style="color:var(--text-faint);font-size:10.5px;">${fd.asset}</span></div>`).join(''):'<div style="padding:20px 14px;color:var(--text-faint);font-size:12px;">No findings match this search.</div>'}
+      ${
+        list.length
+        ? list.map(fd => `
+          <div
+            class="row"
+            style="
+              padding:9px 12px;
+              cursor:pointer;
+              ${fd.id===f.id?'background:var(--panel-2);':''}
+            "
+            data-id="${fd.id}"
+          >
+            <span class="k">
+              <span class="tag-word ${
+                fd.sev==='CRITICAL'
+                  ? 'critical'
+                  : fd.sev==='HIGH'
+                    ? 'high'
+                    : 'medium'
+              }">${fd.sev}</span>
+
+              <br>
+
+              <span style="color:var(--text);font-size:12.5px;">
+                ${fd.title}
+              </span>
+            </span>
+
+            <span
+              class="v mono"
+              style="color:var(--text-faint);font-size:10.5px;"
+            >
+              ${fd.asset}
+            </span>
+          </div>
+        `).join('')
+        : `
+          <div style="padding:20px 14px;color:var(--text-faint);font-size:12px;">
+            No findings match this search.
+          </div>
+        `
+      }
     </div>
+
     <div class="panel">
       <div class="panel-body">
-        <span class="tag-word ${f.sev==='CRITICAL'?'critical':f.sev==='HIGH'?'high':'medium'}">${f.sev}</span>
-        <div style="font-size:15px;font-weight:600;margin-top:6px;">${f.title.toUpperCase()}</div>
-        <div class="mono" style="font-size:12px;color:var(--text-dim);margin-top:4px;">${f.asset} · ${f.platform}</div>
-        <hr class="hr">
-        <div class="row"><span class="k">OBSERVED</span><span class="v">${f.control} = ${f.current}</span></div>
-        <div class="row" style="border-bottom:none;"><span class="k">EXPECTED</span><span class="v" style="color:var(--green)">${f.control} = ${f.required}</span></div>
-        <hr class="hr">
-        <div class="label" style="margin-bottom:6px;">EVIDENCE</div>
-        <div class="code" style="color:var(--text-dim);">${f.raw}</div>
-        <div class="label" style="margin-top:3px;color:var(--text-faint)">Line ${f.line}</div>
-        <hr class="hr">
-        <div class="label" style="margin-bottom:8px;">SECURITY INTERPRETATION</div>
-        <div class="flow-vert">
-          <div class="step">Configuration</div><div class="arrow">↓</div>
-          <div class="step">${f.control}</div><div class="arrow">↓</div>
-          <div class="step">Value = ${f.current}</div><div class="arrow">↓</div>
-          <div class="step">${f.framework} requirement = ${f.required}</div><div class="arrow">↓</div>
-          <div class="step strong" style="color:var(--red)">FAIL</div>
+
+        <span class="tag-word ${
+          f.sev==='CRITICAL'
+            ? 'critical'
+            : f.sev==='HIGH'
+              ? 'high'
+              : 'medium'
+        }">${f.sev}</span>
+
+        <div style="font-size:15px;font-weight:600;margin-top:6px;">
+          ${String(f.title).toUpperCase()}
         </div>
+
+        <div
+          class="mono"
+          style="font-size:12px;color:var(--text-dim);margin-top:4px;"
+        >
+          ${f.asset} · ${f.platform}
+        </div>
+
         <hr class="hr">
-        <button class="btn btn-primary" onclick="setView('remediation')">Propose Remediation</button>
+
+        <div class="row">
+          <span class="k">OBSERVED</span>
+          <span class="v">
+            ${f.control} = ${f.current}
+          </span>
+        </div>
+
+        <div class="row" style="border-bottom:none;">
+          <span class="k">EXPECTED</span>
+          <span class="v" style="color:var(--green)">
+            ${f.control} = ${f.required}
+          </span>
+        </div>
+
+        <hr class="hr">
+
+        <div class="label" style="margin-bottom:6px;">
+          EVIDENCE
+        </div>
+
+        <div class="code" style="color:var(--text-dim);">
+          ${escapeHtml(f.raw)}
+        </div>
+
+        <div
+          class="label"
+          style="margin-top:3px;color:var(--text-faint)"
+        >
+          Line ${f.line}
+        </div>
+
+        <hr class="hr">
+
+        <div class="label" style="margin-bottom:8px;">
+          SECURITY INTERPRETATION
+        </div>
+
+        <div class="flow-vert">
+
+          <div class="step">Configuration</div>
+          <div class="arrow">↓</div>
+
+          <div class="step">${f.control}</div>
+          <div class="arrow">↓</div>
+
+          <div class="step">
+            Value = ${f.current}
+          </div>
+          <div class="arrow">↓</div>
+
+          <div class="step">
+            ${f.framework} requirement = ${f.required}
+          </div>
+          <div class="arrow">↓</div>
+
+          <div
+            class="step strong"
+            style="color:var(--red)"
+          >
+            FAIL
+          </div>
+
+        </div>
+
+        <hr class="hr">
+
+        <button
+          class="btn btn-primary"
+          onclick="setView('remediation')"
+        >
+          Propose Remediation
+        </button>
+
       </div>
     </div>
+
   </div>
   `;
 }
 
 /* ============================================================ REMEDIATION ============================================================ */
-function viewRemediation(){
-  const f=FINDINGS.find(x=>x.id===state.selectedFinding)||FINDINGS[2];
-  const wi=state.whatIf;
+function viewRemediation() {
+
+  const realFindings =
+    getRealFindings();
+
+  const finding =
+    realFindings.find(
+      item => item.id === state.selectedFinding
+    ) || realFindings[0];
+
+
+  /*
+   * No finding available
+   */
+  if (!finding) {
+
+    return `
+
+      <div class="eyebrow">
+        Nirikshak
+      </div>
+
+      <div class="view-title">
+        Remediation Studio
+      </div>
+
+      <div class="view-desc">
+        No real finding is currently selected.
+      </div>
+
+      <hr class="hr">
+
+      <div class="panel">
+
+        <div
+          class="panel-body"
+          style="
+            padding:24px;
+            color:var(--text-dim);
+          "
+        >
+
+          Run an audit and select a failed control
+          before proposing remediation.
+
+        </div>
+
+      </div>
+
+    `;
+
+  }
+
+
+  /*
+   * Backend remediation response
+   */
+  const remediation =
+    state.whatIf?.result || null;
+
+
   return `
-  <div class="eyebrow">Nirikshak</div>
-  <div class="view-title">Remediation Studio</div>
-  <div class="view-desc">${f.title} · <span class="mono">${f.asset}</span></div>
-  ${flowStrip('VALIDATE')}
-  <hr class="hr">
-  <div style="max-width:460px;">
-    <div class="label" style="margin-bottom:6px;">BEFORE</div>
-    <div class="diff-remove">${f.raw}</div>
-    <div style="text-align:center;color:var(--text-faint);padding:8px 0;font-family:var(--mono);">↓</div>
-    <div class="label" style="margin-bottom:6px;">PROPOSED CHANGE</div>
-    <div class="diff-add">${f.raw.replace(f.current, f.required)}</div>
-    <div style="text-align:center;color:var(--text-faint);padding:8px 0;font-family:var(--mono);">↓</div>
 
-    <div class="label" style="margin-bottom:6px;">SIMULATION</div>
-    ${wi?`
-      <div class="row"><span class="k">${f.framework.split(' / ')[0]}</span><span class="v" style="color:var(--green)">PASS ✓</span></div>
-      <div class="row" style="border-bottom:none;"><span class="k">Risk</span><span class="v"><span style="color:var(--red)">${f.risk}</span> → <span style="color:var(--green)">${f.riskFrom}</span></span></div>
-    `:`<div style="font-size:12px;color:var(--text-faint);padding:6px 0;">Not yet run.</div>`}
-    <div style="text-align:center;color:var(--text-faint);padding:8px 0;font-family:var(--mono);">↓</div>
-
-    <div class="label" style="margin-bottom:8px;">HUMAN APPROVAL</div>
-    <div style="display:flex;gap:8px;">
-      <button class="btn" id="btnValidate">${wi?'Re-run Simulation':'Run Simulation'}</button>
-      <button class="btn btn-primary" id="btnApprove" ${wi?'':'disabled'}>Approve Change</button>
+    <div class="eyebrow">
+      Nirikshak
     </div>
-  </div>
+
+
+    <div class="view-title">
+      Remediation Studio
+    </div>
+
+
+    <div class="view-desc">
+
+      ${escapeHtml(finding.control)}
+      ·
+      <span class="mono">
+        ${escapeHtml(finding.asset)}
+      </span>
+
+    </div>
+
+
+    ${flowStrip('VALIDATE')}
+
+
+    <hr class="hr">
+
+
+    <div style="max-width:620px;">
+
+
+      <!-- =========================
+           FINDING
+      ========================== -->
+
+      <div
+        class="label"
+        style="margin-bottom:6px;"
+      >
+        FINDING
+      </div>
+
+
+      <div class="panel">
+
+        <div class="panel-body">
+
+
+          <div class="row">
+
+            <span class="k">
+              CONTROL
+            </span>
+
+            <span class="v mono">
+              ${escapeHtml(
+                finding.control
+              )}
+            </span>
+
+          </div>
+
+
+          <div class="row">
+
+            <span class="k">
+              CURRENT
+            </span>
+
+            <span class="v">
+              ${escapeHtml(
+                finding.current
+              )}
+            </span>
+
+          </div>
+
+
+          <div class="row">
+
+            <span class="k">
+              EXPECTED
+            </span>
+
+            <span
+              class="v"
+              style="color:var(--green)"
+            >
+              ${escapeHtml(
+                finding.required
+              )}
+            </span>
+
+          </div>
+
+
+          <div
+            class="row"
+            style="border-bottom:none;"
+          >
+
+            <span class="k">
+              SEVERITY
+            </span>
+
+            <span class="v">
+              ${escapeHtml(
+                finding.sev
+              )}
+            </span>
+
+          </div>
+
+
+        </div>
+
+      </div>
+
+
+      <!-- =========================
+           ARROW
+      ========================== -->
+
+      <div
+        style="
+          text-align:center;
+          color:var(--text-faint);
+          padding:10px 0;
+          font-family:var(--mono);
+        "
+      >
+        ↓
+      </div>
+
+
+      <!-- =========================
+           BEFORE
+      ========================== -->
+
+      <div
+        class="label"
+        style="margin-bottom:6px;"
+      >
+        BEFORE
+      </div>
+
+
+      <div class="diff-remove">
+
+        ${escapeHtml(
+          remediation?.before ||
+          finding.raw ||
+          'Evidence not available'
+        )}
+
+      </div>
+
+
+      <!-- =========================
+           ARROW
+      ========================== -->
+
+      <div
+        style="
+          text-align:center;
+          color:var(--text-faint);
+          padding:10px 0;
+          font-family:var(--mono);
+        "
+      >
+        ↓
+      </div>
+
+
+      <!-- =========================
+           PROPOSED REMEDIATION
+      ========================== -->
+
+      <div
+        class="label"
+        style="margin-bottom:6px;"
+      >
+        PROPOSED REMEDIATION
+      </div>
+
+
+      ${
+        remediation
+          ? `
+
+            <div class="diff-add">
+
+              ${escapeHtml(
+                remediation.proposed_change ||
+                'No proposed change returned.'
+              )}
+
+            </div>
+
+          `
+          : `
+
+            <div class="panel">
+
+              <div
+                class="panel-body"
+                style="color:var(--text-faint);"
+              >
+
+                Run the simulation to generate
+                a remediation proposal.
+
+              </div>
+
+            </div>
+
+          `
+      }
+
+
+      <!-- =========================
+           ARROW
+      ========================== -->
+
+      <div
+        style="
+          text-align:center;
+          color:var(--text-faint);
+          padding:10px 0;
+          font-family:var(--mono);
+        "
+      >
+        ↓
+      </div>
+
+
+      <!-- =========================
+           VALIDATION STATUS
+      ========================== -->
+
+      <div
+        class="label"
+        style="margin-bottom:8px;"
+      >
+        VALIDATION STATUS
+      </div>
+
+
+      ${
+        remediation
+          ? `
+
+            <div class="row">
+
+              <span class="k">
+                STATUS
+              </span>
+
+              <span
+                class="v"
+                style="color:var(--green)"
+              >
+                PROPOSAL GENERATED ✓
+              </span>
+
+            </div>
+
+
+            <div class="row">
+
+              <span class="k">
+                RESULT
+              </span>
+
+              <span
+                class="v"
+                style="color:var(--green)"
+              >
+                ${escapeHtml(
+                  remediation.status ||
+                  'PROPOSED'
+                )}
+              </span>
+
+            </div>
+
+
+            <div class="row">
+
+              <span class="k">
+                HUMAN APPROVAL
+              </span>
+
+              <span
+                class="v"
+                style="color:var(--amber)"
+              >
+                REQUIRED
+              </span>
+
+            </div>
+
+
+            <div
+              class="row"
+              style="border-bottom:none;"
+            >
+
+              <span class="k">
+                AUTO APPLY
+              </span>
+
+              <span
+                class="v"
+                style="color:var(--amber)"
+              >
+                DISABLED
+              </span>
+
+            </div>
+
+          `
+          : `
+
+            <div
+              style="
+                font-size:12px;
+                color:var(--text-faint);
+                padding:6px 0;
+              "
+            >
+              Not yet validated.
+            </div>
+
+          `
+      }
+
+
+      <hr class="hr">
+
+
+      <!-- =========================
+           HUMAN APPROVAL
+      ========================== -->
+
+      <div
+        class="label"
+        style="margin-bottom:8px;"
+      >
+        HUMAN APPROVAL
+      </div>
+
+
+      <div
+        style="
+          display:flex;
+          gap:8px;
+        "
+      >
+
+
+        <button
+          class="btn"
+          id="btnValidate"
+        >
+          ${
+            remediation
+              ? 'Regenerate Proposal'
+              : 'Generate Proposal'
+          }
+        </button>
+
+
+        <button
+          class="btn btn-primary"
+          id="btnApprove"
+          ${remediation ? '' : 'disabled'}
+        >
+          Approve Change
+        </button>
+
+
+      </div>
+
+
+    </div>
+
   `;
 }
 
@@ -690,50 +2238,1256 @@ function copilotAnswer(){
 
 /* ============================================================ VIEW REGISTRY ============================================================ */
 const VIEWS = {overview:viewOverview, deviceAudit:viewDeviceAudit, findings:viewFindings, remediation:viewRemediation, topology:viewTopology, controls:viewControls, reports:viewReports, parser:viewParser, unknown:viewUnknown, copilot:viewCopilot};
+async function runRealAudit(file) {
+  const allowedExtensions = ['.conf', '.cfg', '.txt'];
+  const fileName = file.name.toLowerCase();
+
+  if (!allowedExtensions.some(ext => fileName.endsWith(ext))) {
+    state.auditError = 'Unsupported file type. Please upload a .conf, .cfg, or .txt file.';
+    state.auditResult = null;
+    state.auditLoading = false;
+    renderMain();
+    return;
+  }
+
+  // Reset previous result
+  state.auditResult = null;
+  state.auditError = null;
+  state.auditLoading = true;
+  state.uploadStage = 0;
+
+  renderMain();
+
+  const formData = new FormData();
+
+  formData.append('file', file);
+  formData.append('framework', 'CIS');
+
+  try {
+    // Pipeline visualization
+    state.uploadStage = 1;
+    renderMain();
+
+    const response = await fetch(
+      'http://127.0.0.1:8000/api/v1/audits/analyze',
+      {
+        method: 'POST',
+        body: formData
+      }
+    );
+
+    state.uploadStage = 2;
+    renderMain();
+
+    if (!response.ok) {
+      let message = `Backend request failed (${response.status})`;
+
+      try {
+        const errorData = await response.json();
+
+        if (errorData.detail) {
+          message = errorData.detail;
+        }
+      } catch (_) {
+        // Ignore JSON parsing failure
+      }
+
+      throw new Error(message);
+    }
+
+    state.uploadStage = 3;
+    renderMain();
+
+    const result = await response.json();
+
+    state.auditResult = result;
+    state.auditLoading = false;
+    state.uploadStage = PIPE_STAGES.length;
+
+    renderMain();
+
+  } catch (error) {
+
+    console.error('HEXA-FORGE audit error:', error);
+
+    state.auditLoading = false;
+    state.auditError =
+      error?.message ||
+      'Unable to connect to the HEXA-FORGE backend.';
+
+    renderMain();
+  }
+}
 
 const attachHandlers = {
-  overview(){},
-  topology(){ bindTopology(); },
-  deviceAudit(){
-    const dz=document.getElementById('dropzone');
-    dz.addEventListener('click',()=>{
-      if(state.uploadStage>=0) return;
-      state.uploadStage=0; renderMain();
-      const step=()=>{ state.uploadStage++; renderMain(); if(state.uploadStage<PIPE_STAGES.length){ setTimeout(step,600); } };
-      setTimeout(step,450);
+
+  /* ============================================================
+     OVERVIEW
+  ============================================================ */
+
+  overview() {
+    // No page-specific handlers required.
+  },
+
+
+  /* ============================================================
+     DEVICE AUDIT
+  ============================================================ */
+
+  deviceAudit() {
+
+    const dropzone =
+      document.getElementById('dropzone');
+
+    const fileInput =
+      document.getElementById('configFileInput');
+
+
+    if (!dropzone || !fileInput) {
+      return;
+    }
+
+
+    /* ---------- OPEN FILE PICKER ---------- */
+
+    dropzone.addEventListener('click', () => {
+
+      if (state.auditLoading) {
+        return;
+      }
+
+      fileInput.click();
+
     });
+
+
+    /* ---------- FILE SELECT ---------- */
+
+    fileInput.addEventListener(
+      'change',
+      async (event) => {
+
+        const file =
+          event.target.files?.[0];
+
+        if (!file) {
+          return;
+        }
+
+        await runRealAudit(file);
+
+      }
+    );
+
+
+    /* ---------- DRAG OVER ---------- */
+
+    dropzone.addEventListener(
+      'dragover',
+      (event) => {
+
+        event.preventDefault();
+
+        dropzone.classList.add('dragover');
+
+      }
+    );
+
+
+    /* ---------- DRAG LEAVE ---------- */
+
+    dropzone.addEventListener(
+      'dragleave',
+      () => {
+
+        dropzone.classList.remove(
+          'dragover'
+        );
+
+      }
+    );
+
+
+    /* ---------- DROP ---------- */
+
+    dropzone.addEventListener(
+      'drop',
+      async (event) => {
+
+        event.preventDefault();
+
+        dropzone.classList.remove(
+          'dragover'
+        );
+
+
+        if (state.auditLoading) {
+          return;
+        }
+
+
+        const file =
+          event.dataTransfer?.files?.[0];
+
+
+        if (!file) {
+          return;
+        }
+
+
+        await runRealAudit(file);
+
+      }
+    );
+
   },
-  parser(){
-    document.querySelectorAll('.code-line.click').forEach(l=>{
-      l.addEventListener('click',()=>{state.selectedLine=parseInt(l.dataset.line);renderMain();});
-    });
+
+
+  /* ============================================================
+     PARSER
+  ============================================================ */
+
+  parser() {
+
+    document
+      .querySelectorAll('.code-line.click')
+      .forEach(line => {
+
+        line.addEventListener(
+          'click',
+          () => {
+
+            const selected =
+              parseInt(
+                line.dataset.line,
+                10
+              );
+
+
+            if (!Number.isNaN(selected)) {
+
+              state.selectedLine =
+                selected;
+
+              renderMain();
+
+            }
+
+          }
+        );
+
+      });
+
   },
-  unknown(){
-    const m=document.getElementById('btnMarkUnknown'), r=document.getElementById('btnReview');
-    if(m) m.addEventListener('click',()=>{state.unknownStatus='VALIDATED';renderMain();});
-    if(r) r.addEventListener('click',()=>{state.unknownStatus='VALIDATED';renderMain();});
+
+
+  /* ============================================================
+     UNKNOWN CONSTRUCT
+  ============================================================ */
+
+  unknown() {
+
+    const markButton =
+      document.getElementById(
+        'btnMarkUnknown'
+      );
+
+    const reviewButton =
+      document.getElementById(
+        'btnReview'
+      );
+
+
+    if (markButton) {
+
+      markButton.addEventListener(
+        'click',
+        () => {
+
+          state.unknownStatus =
+            'VALIDATED';
+
+          renderMain();
+
+        }
+      );
+
+    }
+
+
+    if (reviewButton) {
+
+      reviewButton.addEventListener(
+        'click',
+        () => {
+
+          state.unknownStatus =
+            'VALIDATED';
+
+          renderMain();
+
+        }
+      );
+
+    }
+
   },
-  findings(){
-    document.querySelectorAll('[data-id]').forEach(row=>row.addEventListener('click',()=>{state.selectedFinding=row.dataset.id;renderMain();}));
-    document.querySelectorAll('.chip').forEach(chip=>chip.addEventListener('click',()=>{state.findingSevFilter=chip.dataset.sev;renderMain();}));
-    const search=document.getElementById('findingSearch');
-    if(search){ search.addEventListener('input',()=>{state.findingSearch=search.value; renderMain(); const s=document.getElementById('findingSearch'); s.focus(); s.setSelectionRange(s.value.length,s.value.length);}); }
+
+
+  /* ============================================================
+     FINDINGS
+  ============================================================ */
+
+  findings() {
+
+    /* ---------- SELECT FINDING ---------- */
+
+    document
+      .querySelectorAll('[data-id]')
+      .forEach(row => {
+
+        row.addEventListener(
+          'click',
+          () => {
+
+            const id =
+              row.dataset.id;
+
+            if (!id) {
+              return;
+            }
+
+
+            state.selectedFinding =
+              id;
+
+            state.whatIf =
+              null;
+
+            renderMain();
+
+          }
+        );
+
+      });
+
+
+    /* ---------- SEVERITY FILTER ---------- */
+
+    document
+      .querySelectorAll('.chip')
+      .forEach(chip => {
+
+        chip.addEventListener(
+          'click',
+          () => {
+
+            state.findingSevFilter =
+              chip.dataset.sev || 'ALL';
+
+            renderMain();
+
+          }
+        );
+
+      });
+
+
+    /* ---------- SEARCH ---------- */
+
+    const search =
+      document.getElementById(
+        'findingSearch'
+      );
+
+
+    if (search) {
+
+      search.addEventListener(
+        'input',
+        () => {
+
+          state.findingSearch =
+            search.value;
+
+
+          renderMain();
+
+
+          const updated =
+            document.getElementById(
+              'findingSearch'
+            );
+
+
+          if (updated) {
+
+            updated.focus();
+
+            const length =
+              updated.value.length;
+
+            updated.setSelectionRange(
+              length,
+              length
+            );
+
+          }
+
+        }
+      );
+
+    }
+
   },
-  remediation(){
-    const v=document.getElementById('btnValidate'); if(v) v.addEventListener('click',()=>{state.whatIf={done:true};renderMain();});
-    const ap=document.getElementById('btnApprove'); if(ap) ap.addEventListener('click',()=>{ap.textContent='Approved';ap.disabled=true;});
+
+
+  /* ============================================================
+     REMEDIATION
+  ============================================================ */
+
+  remediation() {
+
+    const generateButton =
+      document.getElementById(
+        'btnValidate'
+      );
+
+
+    const approveButton =
+      document.getElementById(
+        'btnApprove'
+      );
+
+
+    /* ==========================================================
+       GENERATE REMEDIATION
+    ========================================================== */
+
+    if (generateButton) {
+
+      generateButton.addEventListener(
+        'click',
+        async () => {
+
+          console.log(
+            'HEXA-FORGE: Generate Proposal clicked'
+          );
+
+
+          const findings =
+            getRealFindings();
+
+
+          console.log(
+            'HEXA-FORGE: Real findings',
+            findings
+          );
+
+
+          let finding =
+            findings.find(
+              item =>
+                item.id ===
+                state.selectedFinding
+            );
+
+
+          /*
+           * If the selected ID is old / missing,
+           * automatically use the first real finding.
+           */
+
+          if (!finding && findings.length) {
+
+            finding =
+              findings[0];
+
+            state.selectedFinding =
+              finding.id;
+
+          }
+
+
+          if (!finding) {
+
+            alert(
+              'No failed security finding is available. Run an audit first.'
+            );
+
+            return;
+
+          }
+
+
+          /* ---------- LOADING UI ---------- */
+
+          generateButton.disabled =
+            true;
+
+          generateButton.textContent =
+            'Generating...';
+
+
+          try {
+
+            console.log(
+              'Sending remediation request:',
+              finding
+            );
+
+
+            const response =
+              await fetch(
+                'http://127.0.0.1:8000/api/v1/remediation/' +
+                encodeURIComponent(
+                  finding.id
+                ) +
+                '/generate',
+                {
+                  method: 'POST',
+
+                  headers: {
+                    'Content-Type':
+                      'application/json'
+                  },
+
+                  body: JSON.stringify({
+
+                    finding_id:
+                      finding.id,
+
+                    control_id:
+                      finding.control,
+
+                    actual:
+                      finding.current,
+
+                    expected:
+                      finding.required,
+
+                    evidence: {
+
+                      line:
+                        finding.line,
+
+                      raw:
+                        finding.raw
+
+                    },
+
+                    framework:
+                      finding.framework,
+
+                    severity:
+                      finding.sev
+
+                  })
+
+                }
+              );
+
+
+            console.log(
+              'Remediation HTTP status:',
+              response.status
+            );
+
+
+            if (!response.ok) {
+
+              let message =
+                `Remediation request failed (${response.status})`;
+
+
+              try {
+
+                const errorData =
+                  await response.json();
+
+
+                if (
+                  errorData &&
+                  errorData.detail
+                ) {
+
+                  message =
+                    typeof errorData.detail ===
+                    'string'
+                      ? errorData.detail
+                      : JSON.stringify(
+                          errorData.detail
+                        );
+
+                }
+
+              } catch (_) {
+                // Ignore invalid error JSON
+              }
+
+
+              throw new Error(
+                message
+              );
+
+            }
+
+
+            const remediationResult =
+              await response.json();
+
+
+            console.log(
+              'HEXA-FORGE REMEDIATION RESULT:',
+              remediationResult
+            );
+
+
+            /*
+             * Store backend response.
+             *
+             * We keep BOTH result and the direct
+             * properties for maximum compatibility.
+             */
+
+            state.whatIf = {
+
+              result:
+                remediationResult,
+
+              before:
+                remediationResult.before,
+
+              proposed_change:
+                remediationResult.proposed_change,
+
+              status:
+                remediationResult.status,
+
+              done:
+                true
+
+            };
+
+
+            console.log(
+              'HEXA-FORGE state.whatIf:',
+              state.whatIf
+            );
+
+
+            /*
+             * Re-render page.
+             */
+
+            renderMain();
+
+
+          } catch (error) {
+
+            console.error(
+              'HEXA-FORGE remediation error:',
+              error
+            );
+
+
+            generateButton.disabled =
+              false;
+
+            generateButton.textContent =
+              'Generate Proposal';
+
+
+            alert(
+              error?.message ||
+              'Unable to generate remediation proposal.'
+            );
+
+          }
+
+        }
+      );
+
+    }
+
+
+    /* ==========================================================
+       HUMAN APPROVAL
+    ========================================================== */
+
+    if (approveButton) {
+
+      approveButton.addEventListener(
+        'click',
+        () => {
+
+          if (!state.whatIf) {
+
+            alert(
+              'Generate and validate a remediation proposal first.'
+            );
+
+            return;
+
+          }
+
+
+          approveButton.textContent =
+            'Approved ✓';
+
+
+          approveButton.disabled =
+            true;
+
+
+          console.log(
+            'HEXA-FORGE: Human approved remediation',
+            state.whatIf
+          );
+
+        }
+      );
+
+    }
+
   },
-  controls(){
-    const search=document.getElementById('controlSearch');
-    if(search){ search.addEventListener('input',()=>{state.controlSearch=search.value; renderMain(); const s=document.getElementById('controlSearch'); s.focus(); s.setSelectionRange(s.value.length,s.value.length);}); }
+
+
+  /* ============================================================
+     SECURITY CONTROLS
+  ============================================================ */
+
+  controls() {
+
+    const search =
+      document.getElementById(
+        'controlSearch'
+      );
+
+
+    if (!search) {
+      return;
+    }
+
+
+    search.addEventListener(
+      'input',
+      () => {
+
+        state.controlSearch =
+          search.value;
+
+
+        renderMain();
+
+
+        const updated =
+          document.getElementById(
+            'controlSearch'
+          );
+
+
+        if (updated) {
+
+          updated.focus();
+
+          const length =
+            updated.value.length;
+
+          updated.setSelectionRange(
+            length,
+            length
+          );
+
+        }
+
+      }
+    );
+
   },
-  reports(){ ['btnExportJson','btnExportPdf'].forEach(id=>{const b=document.getElementById(id); if(b) b.addEventListener('click',()=>{const orig=b.textContent;b.textContent='Done';setTimeout(()=>b.textContent=orig,1100);});}); },
-  copilot(){ document.getElementById('copilotAsk').addEventListener('click',()=>{document.getElementById('copilotAnswer').innerHTML=copilotAnswer();}); },
+
+
+  /* ============================================================
+     REPORTS
+  ============================================================ */
+
+  reports() {
+
+    const jsonButton =
+      document.getElementById(
+        'btnExportJson'
+      );
+
+
+    const pdfButton =
+      document.getElementById(
+        'btnExportPdf'
+      );
+
+
+    /* ---------- JSON ---------- */
+
+    if (jsonButton) {
+
+      jsonButton.addEventListener(
+        'click',
+        () => {
+
+          try {
+
+            const data =
+              state.auditResult || {
+
+                message:
+                  'No audit result available.'
+
+              };
+
+
+            const blob =
+              new Blob(
+                [
+                  JSON.stringify(
+                    data,
+                    null,
+                    2
+                  )
+                ],
+                {
+                  type:
+                    'application/json'
+                }
+              );
+
+
+            const url =
+              URL.createObjectURL(
+                blob
+              );
+
+
+            const link =
+              document.createElement(
+                'a'
+              );
+
+
+            link.href = url;
+
+            link.download =
+              'nirikshak-audit-report.json';
+
+
+            document.body.appendChild(
+              link
+            );
+
+            link.click();
+
+            link.remove();
+
+
+            URL.revokeObjectURL(
+              url
+            );
+
+
+            jsonButton.textContent =
+              'Downloaded ✓';
+
+
+            setTimeout(
+              () => {
+
+                if (jsonButton) {
+
+                  jsonButton.textContent =
+                    'Export JSON';
+
+                }
+
+              },
+              1200
+            );
+
+
+          } catch (error) {
+
+            console.error(
+              'JSON export error:',
+              error
+            );
+
+            alert(
+              'Unable to export JSON report.'
+            );
+
+          }
+
+        }
+      );
+
+    }
+
+
+    /* ---------- PDF ---------- */
+
+    if (pdfButton) {
+
+      pdfButton.addEventListener(
+        'click',
+        () => {
+
+          /*
+           * Prototype-safe PDF action:
+           * opens the browser print dialog.
+           */
+
+          window.print();
+
+        }
+      );
+
+    }
+
+  },
+
+
+  /* ============================================================
+     TOPOLOGY
+  ============================================================ */
+
+  topology() {
+
+    if (
+      typeof bindTopology ===
+      'function'
+    ) {
+
+      bindTopology();
+
+    }
+
+  },
+
+
+  /* ============================================================
+     COPILOT
+  ============================================================ */
+
+  copilot() {
+
+    const askButton =
+      document.getElementById(
+        'copilotAsk'
+      );
+
+
+    const answerBox =
+      document.getElementById(
+        'copilotAnswer'
+      );
+
+
+    if (
+      !askButton ||
+      !answerBox
+    ) {
+
+      return;
+
+    }
+
+
+    askButton.addEventListener(
+      'click',
+      () => {
+
+        try {
+
+          const queryInput =
+            document.getElementById(
+              'copilotQuery'
+            );
+
+
+          const query =
+            queryInput?.value?.trim() ||
+            'Why is this configuration non-compliant?';
+
+
+          /*
+           * For the prototype, ground the
+           * response in the actual audit result
+           * whenever available.
+           */
+
+          const findings =
+            getRealFindings();
+
+
+          if (
+            state.auditResult &&
+            findings.length
+          ) {
+
+            const f =
+              findings[0];
+
+
+            answerBox.innerHTML = `
+
+              <div class="answer-row">
+
+                <div class="k">
+                  QUERY
+                </div>
+
+                <div class="v">
+                  ${escapeHtml(query)}
+                </div>
+
+              </div>
+
+
+              <div class="answer-row">
+
+                <div class="k">
+                  Root Cause
+                </div>
+
+                <div class="v">
+                  Control
+                  <span class="mono">
+                    ${escapeHtml(f.control)}
+                  </span>
+                  is non-compliant.
+                </div>
+
+              </div>
+
+
+              <div class="answer-row mono">
+
+                <div class="k">
+                  Evidence
+                </div>
+
+                <div class="v">
+                  ${escapeHtml(f.raw)}
+
+                  <br>
+
+                  <span
+                    style="
+                      color:var(--text-faint)
+                    "
+                  >
+                    Line ${escapeHtml(f.line)}
+                  </span>
+
+                </div>
+
+              </div>
+
+
+              <div class="answer-row mono">
+
+                <div class="k">
+                  Security Control
+                </div>
+
+                <div class="v">
+                  ${escapeHtml(f.control)}
+                </div>
+
+              </div>
+
+
+              <div class="answer-row mono">
+
+                <div class="k">
+                  Requirement
+                </div>
+
+                <div class="v">
+                  ${escapeHtml(f.control)}
+                  =
+                  ${escapeHtml(f.required)}
+                </div>
+
+              </div>
+
+
+              <div class="answer-row">
+
+                <div class="k">
+                  Framework
+                </div>
+
+                <div class="v">
+                  ${escapeHtml(f.framework)}
+                </div>
+
+              </div>
+
+
+              <div class="answer-row">
+
+                <div class="k">
+                  Risk
+                </div>
+
+                <div
+                  class="v"
+                  style="color:var(--red)"
+                >
+                  ${escapeHtml(f.sev)}
+                </div>
+
+              </div>
+
+
+              <div
+                class="answer-row"
+                style="border-bottom:none;"
+              >
+
+                <div class="k">
+                  Recommendation
+                </div>
+
+                <div class="v">
+                  Generate a remediation proposal,
+                  validate it, and obtain human approval
+                  before any operational change.
+                </div>
+
+              </div>
+
+            `;
+
+          } else {
+
+            answerBox.innerHTML = `
+
+              <div
+                style="
+                  padding:16px;
+                  color:var(--text-dim);
+                "
+              >
+                Run a configuration audit first.
+                Copilot answers are grounded in
+                the resulting audit evidence.
+              </div>
+
+            `;
+
+          }
+
+        } catch (error) {
+
+          console.error(
+            'Copilot error:',
+            error
+          );
+
+
+          answerBox.innerHTML = `
+
+            <div
+              style="
+                padding:16px;
+                color:var(--red);
+              "
+            >
+              Unable to generate Copilot response.
+            </div>
+
+          `;
+
+        }
+
+      }
+    );
+
+  }
+
 };
 
-renderSidebar();
-renderMain();
+
+/* ============================================================
+   SAFE INITIAL RENDER
+============================================================ */
+
+try {
+
+  renderSidebar();
+
+  renderMain();
+
+} catch (error) {
+
+  console.error(
+    'Nirikshak startup error:',
+    error
+  );
+
+
+  const main =
+    document.getElementById(
+      'main'
+    );
+
+
+  if (main) {
+
+    main.innerHTML = `
+
+      <div
+        class="panel"
+        style="
+          margin:40px;
+          border-color:var(--red);
+        "
+      >
+
+        <div class="panel-head">
+          APPLICATION ERROR
+        </div>
+
+        <div
+          class="panel-body"
+          style="
+            padding:20px;
+            color:var(--red);
+          "
+        >
+
+          <div>
+            Nirikshak encountered a
+            JavaScript error.
+          </div>
+
+          <br>
+
+          <div class="mono">
+            ${escapeHtml(
+              error?.message ||
+              'Unknown JavaScript error'
+            )}
+          </div>
+
+        </div>
+
+      </div>
+
+    `;
+
+  }
+
+}
 </script>
 </body>
 </html>
-

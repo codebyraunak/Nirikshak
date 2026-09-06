@@ -1,0 +1,72 @@
+# ============================================================
+# HEXA-FORGE Backend - Git Ignore
+# ============================================================
+
+# Python cache / compiled files
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*$py.class
+
+# Python build / packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment variables / secrets
+.env
+.env.*
+!.env.example
+
+# IDE / editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.coverage.*
+.tox/
+.nox/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Local application data
+data/configs/*
+data/embeddings/*
+data/reports/*
+
+# Keep folder structure
+!data/configs/.gitkeep
+!data/embeddings/.gitkeep
+!data/reports/.gitkeep
+# AI model weights
+models/*
+!models/.gitkeep
