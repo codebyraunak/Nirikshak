@@ -10,8 +10,6 @@ app = FastAPI(
     version="1.0.0",
     description="AI-Augmented Vendor-Agnostic Network Security Auditor",
 )
-
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -19,6 +17,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 
 app.include_router(

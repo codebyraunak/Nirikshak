@@ -281,6 +281,9 @@ const state = {
   view:'overview', selectedDevice:'CORE-RTR-01', selectedFinding:FINDINGS[0].id,
   uploadStage:-1, unknownStatus:'PENDING', whatIf:null,
   findingSearch:'', findingSevFilter:'ALL', controlSearch:'', selectedLine:87,
+  auditResult: null,
+  auditLoading: false,
+  auditError: null,
 };
 function el(html){const t=document.createElement('template');t.innerHTML=html.trim();return t.content.firstElementChild;}
 
@@ -402,22 +405,380 @@ function bindTopology(){document.querySelectorAll('[data-device]').forEach(n=>n.
 
 /* ============================================================ DEVICE AUDIT ============================================================ */
 const PIPE_STAGES=['INGESTING','VENDOR DETECTION','PARSING','SEMANTIC ANALYSIS','COMPLIANCE EVALUATION'];
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function renderCompliance(compliance) {
+  if (!compliance) {
+    return `
+      <div class="panel">
+        <div class="panel-head">COMPLIANCE ASSESSMENT</div>
+        <div style="padding:20px;color:var(--text-dim);">
+          No compliance assessment available.
+        </div>
+      </div>
+    `;
+  }
+
+  const percentage = Number(compliance.compliance_percentage ?? 0);
+  const passed = Number(compliance.passed ?? 0);
+  const failed = Number(compliance.failed ?? 0);
+  const total = Number(compliance.total_assessed ?? 0);
+  const framework = escapeHtml(compliance.framework ?? 'CIS');
+
+  const assessments = Array.isArray(compliance.assessments)
+    ? compliance.assessments
+    : [];
+
+  return `
+    <div class="panel">
+      <div class="panel-head">COMPLIANCE ASSESSMENT</div>
+
+      <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:1px;background:var(--border);margin-top:1px;">
+
+        <div style="background:var(--panel);padding:20px;">
+          <div class="label">FRAMEWORK</div>
+          <div style="font-size:22px;font-weight:600;margin-top:8px;">
+            ${framework}
+          </div>
+        </div>
+
+        <div style="background:var(--panel);padding:20px;">
+          <div class="label">COMPLIANCE</div>
+          <div style="font-size:28px;font-weight:700;margin-top:8px;">
+            ${percentage.toFixed(2)}%
+          </div>
+        </div>
+
+        <div style="background:var(--panel);padding:20px;">
+          <div class="label">PASSED</div>
+          <div style="font-size:28px;font-weight:700;margin-top:8px;">
+            ${passed}
+          </div>
+        </div>
+
+        <div style="background:var(--panel);padding:20px;">
+          <div class="label">FAILED</div>
+          <div style="font-size:28px;font-weight:700;margin-top:8px;">
+            ${failed}
+          </div>
+        </div>
+
+      </div>
+
+      <div style="padding:18px 20px;border-top:1px solid var(--border);">
+        <div class="label" style="margin-bottom:12px;">
+          CONTROL ASSESSMENTS · ${total}
+        </div>
+
+        ${assessments.map(a => {
+          const status = String(a.status ?? '').toUpperCase();
+          const isPass = status === 'PASS';
+
+          return `
+            <div style="
+              display:grid;
+              grid-template-columns:1.5fr 100px 120px;
+              gap:16px;
+              padding:12px 0;
+              border-bottom:1px solid var(--border);
+              align-items:center;
+            ">
+              <div class="mono">
+                ${escapeHtml(a.control_id ?? 'UNKNOWN')}
+              </div>
+
+              <div class="mono">
+                ${escapeHtml(String(a.actual ?? '—'))}
+              </div>
+
+              <div style="
+                font-weight:600;
+                color:${isPass ? 'var(--green)' : 'var(--red)'};
+              ">
+                ${isPass ? 'PASS' : 'FAIL'}
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
 function viewDeviceAudit(){
+  const result = state.auditResult;
+  const loading = state.auditLoading;
+  const error = state.auditError;
+
   return `
   <div class="eyebrow">Nirikshak</div>
   <div class="view-title">Device Audit &amp; Ingestion</div>
-  <div class="view-desc">Upload vendor configuration files for parsing, interpretation, and compliance evaluation.</div>
-  <hr class="hr">
-  <div class="dropzone" id="dropzone"><div class="dz-title">Drop configuration files here, or click to browse</div><div class="dz-sub">Cisco · Fortinet · Palo Alto · Juniper · SONiC · Cloud</div></div>
-  <div id="pipelineWrap" style="margin-top:20px;display:${state.uploadStage>=0?'block':'none'};">
-    <div class="label" style="margin-bottom:6px;">core-rtr-01-running-config.txt</div>
-    <div class="pipeline">${PIPE_STAGES.map((s,i)=>`<div class="pipe-step"><div class="pipe-dot ${i<state.uploadStage?'done':i===state.uploadStage?'active':''}"></div><div class="pipe-label ${i<state.uploadStage?'done':i===state.uploadStage?'active':''}">${s}</div></div>`).join('')}</div>
-    <div style="margin-top:12px;font-size:12px;color:var(--text-dim);">${state.uploadStage>=PIPE_STAGES.length?'Ingestion complete — 3 new findings identified, compliance recalculated.':''}</div>
+  <div class="view-desc">
+    Upload vendor configuration files for parsing, interpretation, and compliance evaluation.
   </div>
+
   <hr class="hr">
+
+  <div class="dropzone" id="dropzone">
+    <input
+      type="file"
+      id="configFileInput"
+      accept=".conf,.cfg,.txt"
+      style="display:none;"
+    />
+
+    <div class="dz-title">
+      ${loading ? 'Analyzing configuration…' : 'Drop configuration files here, or click to browse'}
+    </div>
+
+    <div class="dz-sub">
+      Supported: Cisco IOS / IOS-XE · .conf · .cfg · .txt
+    </div>
+  </div>
+
+  ${
+    loading
+      ? `
+        <div id="pipelineWrap" style="margin-top:20px;">
+          <div class="label" style="margin-bottom:6px;">
+            Analyzing configuration
+          </div>
+
+          <div class="pipeline">
+            ${PIPE_STAGES.map((s,i)=>`
+              <div class="pipe-step">
+                <div class="pipe-dot ${i === state.uploadStage ? 'active' : i < state.uploadStage ? 'done' : ''}"></div>
+                <div class="pipe-label ${i === state.uploadStage ? 'active' : i < state.uploadStage ? 'done' : ''}">
+                  ${s}
+                </div>
+              </div>
+            `).join('')}
+          </div>
+
+          <div style="margin-top:12px;font-size:12px;color:var(--text-dim);">
+            Processing with the HEXA-FORGE security analysis engine…
+          </div>
+        </div>
+      `
+      : ''
+  }
+
+  ${
+    error
+      ? `
+        <div class="panel" style="margin-top:20px;border-color:var(--red);">
+          <div class="panel-head">AUDIT ERROR</div>
+          <div style="padding:16px;color:var(--red);font-size:13px;">
+            ${escapeHtml(error)}
+          </div>
+        </div>
+      `
+      : ''
+  }
+
+  ${
+    result
+      ? `
+        <hr class="hr">
+
+        <div class="section-label">AUDIT RESULT</div>
+
+        <div class="grid-3" style="margin-top:12px;">
+
+          <div class="panel">
+            <div class="panel-head">FILE</div>
+            <div style="padding:16px;">
+              <div class="mono" style="font-size:13px;">
+                ${escapeHtml(result.filename || 'Unknown')}
+              </div>
+              <div style="margin-top:8px;font-size:12px;color:var(--text-dim);">
+                ${result.line_count ?? 0} configuration lines
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">VENDOR</div>
+            <div style="padding:16px;">
+              <div class="mono" style="font-size:18px;">
+                ${escapeHtml(result.vendor_detection?.vendor || 'Unknown')}
+              </div>
+              <div style="margin-top:8px;font-size:12px;color:var(--text-dim);">
+                ${escapeHtml(result.vendor_detection?.platform || 'Platform not detected')}
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">PARSER</div>
+            <div style="padding:16px;">
+              <div class="mono" style="font-size:13px;">
+                ${escapeHtml(result.parser || 'Unknown')}
+              </div>
+              <div style="margin-top:8px;font-size:12px;color:var(--text-dim);">
+                ${result.semantic_model?.object_count ?? 0} semantic objects
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="panel" style="margin-top:20px;">
+          <div class="panel-head">SEMANTIC SECURITY MODEL</div>
+
+          <div style="overflow:auto;">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Control</th>
+                  <th>Category</th>
+                  <th>Value</th>
+                  <th>Source</th>
+                  <th>Evidence</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                ${
+                  (result.semantic_model?.semantic_objects || []).map(obj => `
+                    <tr>
+                      <td class="mono">${escapeHtml(obj.control_id || 'UNKNOWN')}</td>
+                      <td>${escapeHtml(obj.category || 'unknown')}</td>
+                      <td class="mono">${escapeHtml(
+                        typeof obj.value === 'object'
+                          ? JSON.stringify(obj.value)
+                          : String(obj.value ?? '')
+                      )}</td>
+                      <td>
+                        <span class="tag-word ${
+                          obj.source === 'human_approved_mapping'
+                            ? 'good'
+                            : obj.source === 'qwen'
+                              ? 'warn'
+                              : ''
+                        }">
+                          ${escapeHtml(obj.source || 'parser')}
+                        </span>
+                      </td>
+                      <td class="mono">
+                        ${
+                          obj.evidence
+                            ? `Line ${obj.evidence.line}: ${escapeHtml(obj.evidence.raw || '')}`
+                            : '—'
+                        }
+                      </td>
+                    </tr>
+                  `).join('')
+                  ||
+                  `
+                    <tr>
+                      <td colspan="5" style="text-align:center;color:var(--text-dim);padding:24px;">
+                        No semantic objects detected.
+                      </td>
+                    </tr>
+                  `
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        ${
+          (result.ai_interpretations || []).length
+            ? `
+              <div class="panel" style="margin-top:20px;">
+                <div class="panel-head">AI / ADAPTIVE KNOWLEDGE INTERPRETATIONS</div>
+
+                <div style="overflow:auto;">
+                  <table class="table">
+                    <thead>
+                      <tr>
+                        <th>Line</th>
+                        <th>Configuration</th>
+                        <th>Control</th>
+                        <th>Confidence</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      ${
+                        result.ai_interpretations.map(ai => `
+                          <tr>
+                            <td class="mono">${ai.input_line ?? '—'}</td>
+                            <td class="mono">${escapeHtml(ai.input_text || '')}</td>
+                            <td class="mono">${escapeHtml(ai.security_control || 'UNKNOWN')}</td>
+                            <td class="mono">
+                              ${
+                                typeof ai.confidence === 'number'
+                                  ? Math.round(ai.confidence * 100) + '%'
+                                  : '—'
+                              }
+                            </td>
+                            <td>
+                              ${
+                                ai.source === 'human_approved_mapping'
+                                  ? '<span class="tag-word good">APPROVED MAPPING</span>'
+                                  : ai.requires_human_validation
+                                    ? '<span class="tag-word warn">REQUIRES REVIEW</span>'
+                                    : '<span class="tag-word good">AI INTERPRETED</span>'
+                              }
+                            </td>
+                          </tr>
+                        `).join('')
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            `
+            : ''
+        }
+
+        <div class="panel" style="margin-top:20px;">
+          <div class="panel-head">CIS CONTROL ASSESSMENT</div>
+
+          <div style="padding:16px;">
+            ${renderCompliance(result.compliance)}
+          </div>
+        </div>
+      `
+      : ''
+  }
+
+  <hr class="hr">
+
   <div class="section-label">Audit History</div>
-  <table class="table"><thead><tr><th>Audit ID</th><th>Assets</th><th>Date</th><th>Status</th></tr></thead>
-  <tbody>${AUDIT_HISTORY.map(a=>`<tr><td class="mono">${a.id}</td><td class="mono">${a.assets}</td><td>${a.date}</td><td><span class="tag-word good">${a.status}</span></td></tr>`).join('')}</tbody></table>
+
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Audit ID</th>
+        <th>Assets</th>
+        <th>Date</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      ${AUDIT_HISTORY.map(a=>`
+        <tr>
+          <td class="mono">${a.id}</td>
+          <td class="mono">${a.assets}</td>
+          <td>${a.date}</td>
+          <td><span class="tag-word good">${a.status}</span></td>
+        </tr>
+      `).join('')}
+    </tbody>
+  </table>
   `;
 }
 
@@ -690,17 +1051,132 @@ function copilotAnswer(){
 
 /* ============================================================ VIEW REGISTRY ============================================================ */
 const VIEWS = {overview:viewOverview, deviceAudit:viewDeviceAudit, findings:viewFindings, remediation:viewRemediation, topology:viewTopology, controls:viewControls, reports:viewReports, parser:viewParser, unknown:viewUnknown, copilot:viewCopilot};
+async function runRealAudit(file) {
+  const allowedExtensions = ['.conf', '.cfg', '.txt'];
+  const fileName = file.name.toLowerCase();
+
+  if (!allowedExtensions.some(ext => fileName.endsWith(ext))) {
+    state.auditError = 'Unsupported file type. Please upload a .conf, .cfg, or .txt file.';
+    state.auditResult = null;
+    state.auditLoading = false;
+    renderMain();
+    return;
+  }
+
+  // Reset previous result
+  state.auditResult = null;
+  state.auditError = null;
+  state.auditLoading = true;
+  state.uploadStage = 0;
+
+  renderMain();
+
+  const formData = new FormData();
+
+  formData.append('file', file);
+  formData.append('framework', 'CIS');
+
+  try {
+    // Pipeline visualization
+    state.uploadStage = 1;
+    renderMain();
+
+    const response = await fetch(
+      'http://127.0.0.1:8000/api/v1/audits/analyze',
+      {
+        method: 'POST',
+        body: formData
+      }
+    );
+
+    state.uploadStage = 2;
+    renderMain();
+
+    if (!response.ok) {
+      let message = `Backend request failed (${response.status})`;
+
+      try {
+        const errorData = await response.json();
+
+        if (errorData.detail) {
+          message = errorData.detail;
+        }
+      } catch (_) {
+        // Ignore JSON parsing failure
+      }
+
+      throw new Error(message);
+    }
+
+    state.uploadStage = 3;
+    renderMain();
+
+    const result = await response.json();
+
+    state.auditResult = result;
+    state.auditLoading = false;
+    state.uploadStage = PIPE_STAGES.length;
+
+    renderMain();
+
+  } catch (error) {
+
+    console.error('HEXA-FORGE audit error:', error);
+
+    state.auditLoading = false;
+    state.auditError =
+      error?.message ||
+      'Unable to connect to the HEXA-FORGE backend.';
+
+    renderMain();
+  }
+}
 
 const attachHandlers = {
   overview(){},
   topology(){ bindTopology(); },
   deviceAudit(){
-    const dz=document.getElementById('dropzone');
-    dz.addEventListener('click',()=>{
-      if(state.uploadStage>=0) return;
-      state.uploadStage=0; renderMain();
-      const step=()=>{ state.uploadStage++; renderMain(); if(state.uploadStage<PIPE_STAGES.length){ setTimeout(step,600); } };
-      setTimeout(step,450);
+    const dz = document.getElementById('dropzone');
+    const input = document.getElementById('configFileInput');
+
+    if (!dz || !input) return;
+
+    // Open file picker when dropzone is clicked
+    dz.addEventListener('click', () => {
+      if (state.auditLoading) return;
+      input.click();
+    });
+
+    // Handle selected configuration
+    input.addEventListener('change', async (event) => {
+      const file = event.target.files?.[0];
+
+      if (!file) return;
+
+      await runRealAudit(file);
+    });
+
+    // Drag & drop support
+    dz.addEventListener('dragover', (event) => {
+      event.preventDefault();
+      dz.classList.add('dragover');
+    });
+
+    dz.addEventListener('dragleave', () => {
+      dz.classList.remove('dragover');
+    });
+
+    dz.addEventListener('drop', async (event) => {
+      event.preventDefault();
+      dz.classList.remove('dragover');
+
+      if (state.auditLoading) return;
+
+      const file = event.dataTransfer.files?.[0];
+
+      if (!file) return;
+
+      await runRealAudit(file);
     });
   },
   parser(){
