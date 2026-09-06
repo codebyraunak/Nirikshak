@@ -4,6 +4,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.audit import router as audit_router
 from app.api.semantic import router as semantic_router
+from app.api.remediation import router as remediation_router
+
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -26,6 +28,10 @@ app.include_router(
 )
 app.include_router(
     semantic_router,
+    prefix=settings.API_V1_STR,
+)
+app.include_router(
+    remediation_router,
     prefix=settings.API_V1_STR,
 )
 
